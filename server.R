@@ -1,77 +1,5 @@
-library(rhandsontable)
-library(DT)
-library(rjson)
 
 shinyServer(function(input, output, session) {
-  
-  starterPositions <- rosterPositions[!grepl("BE",rosterPositions)]
-  nRounds <- 14
-  availChartY <- "rank"
-  availChartX <- "points"
-  ff <- read.csv(fffile,stringsAsFactors = F)
-  ff[ff$team=="JAC","team"] <- "JAX"
-  
-  colnames(ff)[c(1,2,4)] <- c("id", "name","pos")
-  
-  #Set up ordered table
-  fft<-ff[,c("pos","name","team","age","bye","points","upper","lower","vor","vorHigh","vorLow","dropoff","risk","adp","sleeper")]
-  numCols <- c("points","upper","lower","vor","vorHigh","vorLow","dropoff","risk","adp","sleeper")
-  #fft[,numCols] <- apply(fft[,numCols],c(1,2),FUN=fdyn,digits=1)
-  
-  #Set-Up rankings table 
-  ffd<-ff[,c("id","pos","name","points","vor","risk")]
-  
-  fft <- fft[!grepl("LB|DL|DB",fft$pos),]; rownames(fft) <- 1:nrow(fft)
-  ff <- ff[!grepl("LB|DL|DB",ff$pos),]; rownames(ff) <- 1:nrow(ff)
-  
-  ff$pId <- unlist(sapply(1:nrow(ff),function(x) paste(ff[x,'name'],ff[x,'team'],ff[x,'pos'],sep="|")))
-  
-  allPlayers <- updatePlayersFromSleeper(fileName=gsub("Draft","Player",draftFile),leagueId)
-  ## Load File or Setup New ###########################################  
-  if(file.exists(draftFile)){
-    load(draftFile)
-  }else{
-    playersAvail <- unique(ff$pId)
-    playerLevels <- c("",playersAvail)
-    availPlayers = factor(rep("",nRounds),levels=playerLevels)
-    #ff$pId <- factor(ff$pId,levels=playerLevels)
-    playersTaken <- character()
-    
-    dfDraft = data.frame(matrix("",length(availPlayers),length(teams)), stringsAsFactors = F) #data.frame(matrix(availPlayers,length(availPlayers),length(teams)))
-    colnames(dfDraft) <- teams
-    
-    rosters <- data.frame(matrix("",length(availPlayers),length(teams)), stringsAsFactors = F)
-    colnames(rosters) <- teams; rownames(rosters) <- rosterPositions[1:nrow(rosters)]; #rosters[,] <- ""
-    
-    draftResults <- data.frame('Overall'=integer(),'Round'=integer(),'Team'=character(),'Pick'=character(), stringsAsFactors = F)
-    n <- 0
-    for(x in 1:nRounds){#x=1
-      if(IsOdd(x)){
-        roundOrder <- 1:length(teams)
-      }else{
-        roundOrder <- length(teams):1
-      }
-      for(t in roundOrder){#t=1
-        n <- n + 1
-        draftResults[n,'Overall'] <- n
-        draftResults[n,'Round'] <- x
-        draftResults[n,'Team'] <- teams[t]
-      }
-    }
-    draftResults$Pick <- ""
-    draftForecast <- forecastDraft(draftResults,ff)
-    
-    seasonProjection <- leagueProjection(allPlayers,draftForecast,starterPositions)
-    
-    #Traded Draft Picks
-    if(draftResults[96,]$Team == "Miles") draftResults[96,]$Team <- "Nate"
-    if(draftResults[59,]$Team == "Nate") draftResults[59,]$Team <- "Miles"
-    
-    StartPickTime <- Sys.time()# + 4*60
-    playersTakenCount <- 0
-    
-    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
-  }
   
   ## Reactives ###########################################
   
@@ -83,7 +11,7 @@ shinyServer(function(input, output, session) {
                           rosterData = rosters,
                           dResult = draftResults,
                           fResult = draftForecast,
-                          lPrj = seasonProjection,
+                          #lPrj = seasonProjection,
                           availChartX = availChartX,
                           availChartY = availChartY,
                           StartPickTime = StartPickTime,
@@ -119,7 +47,7 @@ shinyServer(function(input, output, session) {
     values$dResult <- draftResults 
     values$dForecast <- forecastDraft(draftResults,ff)
     draftForecast <- values$dForecast
-    seasonProjection <- values$lPrj
+    #seasonProjection <- values$lPrj
     
     rosters <- setRoster(draftForecast,showForecast=input$chartShowForecastedRoster)
     values$rosterData <- rosters
@@ -256,25 +184,25 @@ shinyServer(function(input, output, session) {
       roundupGraph(ff,pos="K",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
     },height = 300)
     
-    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
+    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,playersTakenCount,StartPickTime, file = draftFile)
     
   })
   
   
   ##update Projections ####
-  observeEvent(input$RefreshLeaguePrj,{
-    lPrj <- leagueProjection(allPlayers,values$dForecast,starterPositions)
-    values$lPrj <- lPrj
-    
-    output$leagueProjChart = renderPlotly({leagueProjection_Plot(lPrj)})
-    
-    output$leagueProjTable = renderText(leagueProjection_Kable(leagueProjection_Table(lPrj)))
-    
-    output$leagueProjRank = renderText(leagueProjection_RankKable(leagueProjection_Rank(leagueProjection_Table(lPrj))))
-    
-    output$leagueProjWeek = renderText(leagueProjection_WeekKable(leagueProjection_Week(lPrj,input$leaguePrjWk)))
-    
-  })
+  # observeEvent(input$RefreshLeaguePrj,{
+  #   lPrj <- leagueProjection(allPlayers,values$dForecast,starterPositions)
+  #   values$lPrj <- lPrj
+  #   
+  #   output$leagueProjChart = renderPlotly({leagueProjection_Plot(lPrj)})
+  #   
+  #   output$leagueProjTable = renderText(leagueProjection_Kable(leagueProjection_Table(lPrj)))
+  #   
+  #   output$leagueProjRank = renderText(leagueProjection_RankKable(leagueProjection_Rank(leagueProjection_Table(lPrj))))
+  #   
+  #   output$leagueProjWeek = renderText(leagueProjection_WeekKable(leagueProjection_Week(lPrj,input$leaguePrjWk)))
+  #   
+  # })
   
   ## Output updates ########################################### 
   # output$draftData = DT::renderDataTable({

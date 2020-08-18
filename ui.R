@@ -51,9 +51,9 @@ shinyUI(
                       column(4,plotOutput("wrChart")),
                       column(4,
                              plotOutput("qbChart"),plotOutput("teChart"),plotOutput("dstChart"),plotOutput("kChart"),
-                             selectInput("chartY","Chart Y-Axis",c("Position Rank"="positionRank","Overall Rank"="overallRank",
-                                                                   "Position ECR"="positionECR","Overall ECR"="overallECR","adp","auctionValue")),
-                             selectInput("chartX","Chart X-Axis",c("Points"="points","VOR"="vor","VOR Game"="vorGame")),
+                             selectInput("chartY","Chart Y-Axis",c("Position Rank"="pos_rank","Overall Rank"="overallRank",
+                                                                   "Position ECR"="pos_ecr","Overall ECR"="ecr","Average ADP" = "adp","Auction Value"="aav")),
+                             selectInput("chartX","Chart X-Axis",c("Points"="points","VOR"="vor","Auction Value"="aav")),
                              checkboxInput("chartShowTaken", "Show Taken Players", TRUE)
                       )
              ),

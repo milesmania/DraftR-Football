@@ -2,7 +2,7 @@
 ## User Functions ###########################################
 
 #grid.newpage();grid.draw(roundupGraph(ffDT <- ff,pos <- "RB",nPlayers=75)) #pos <- "QB"
-roundupGraph <- function(ffDT,pos,playersTaken=NULL,nPlayers=25,yVal="positionRank",xVal="points",showTaken=TRUE,
+roundupGraph <- function(ffDT,pos,playersTaken=NULL,nPlayers=25,yVal="pos_rank",xVal="points",showTaken=TRUE,
                          showRisk=FALSE) {
   ffDT <- ffDT[grepl(pos,ffDT$pos),]
   
@@ -109,16 +109,16 @@ forecastDraft <- function(draftResults,ff){
           if(length(grep("RB$",dPlayers)) >= 4) dRestrict <- c(dRestrict,"RB$")
           if(length(grep("WR$",dPlayers)) >= 4) dRestrict <- c(dRestrict,"WR$")
           if(length(dRestrict)>5){
-            dComments <- paste(dComments,"All Restricted, 2 Limit K and DST:")
-            dRestrict <- character()
-            if(length(grep("K$",dPlayers)) >= 2) dRestrict <- c(dRestrict,"K$")
-            if(length(grep("DST$",dPlayers)) >= 2) dRestrict <- c(dRestrict,"DST$")
+            dComments <- paste(dComments,"All Restricted, Remove Position Player Restrictions:")
+            dRestrict <- c("K$","DST$")
           }
-          dRestrict <- paste(dRestrict,collapse = "|")
-          if(nchar(dRestrict) > 0){
-            dForcast[rF,'Pick'] <- head(dFF[!grepl(dRestrict,dFF$pos),'pId'],1)
-            dComments <- paste(dComments,"Restrict:",gsub("\\$","",dRestrict))
-            dComments <- paste(dComments,"FR:",paste(head(dFF[!grepl(dRestrict,dFF$pos),'pId'],5),collapse=","))
+          if(length(dRestrict) > 0){
+            dRestrict <- paste(dRestrict,collapse = "|")
+            if(any(!grepl(dRestrict,dFF$pos))){
+              dForcast[rF,'Pick'] <- head(dFF[!grepl(dRestrict,dFF$pos),'pId'],1)
+              dComments <- paste(dComments,"Restrict:",gsub("\\$","",dRestrict))
+              dComments <- paste(dComments,"FR:",paste(head(dFF[!grepl(dRestrict,dFF$pos),'pId'],5),collapse=","))
+            }
           }
         }
       }
@@ -230,7 +230,7 @@ setRosterKable <- function(draftedPlayers,showForecast=TRUE,
 #dfDraft <- draftPopulate(picksToUpdate,dfDraft)
 updateDraftFromSleeper <- function(draftId,draftResults){#draftId=469304291434164225
   dPlayers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId,"/picks"), flatten = TRUE)
-  if(is.null(dPlayers)) return(data.frame('round'=integer(),'draft_slot'=integer(),'pId'=character(),stringsAsFactors = F))
+  if(is.null(dPlayers) || length(dPlayers)==0) return(data.frame('round'=integer(),'draft_slot'=integer(),'pId'=character(),stringsAsFactors = F))
   
   colnames(dPlayers)[grep("metadata",colnames(dPlayers))] <- gsub("metadata.","",colnames(dPlayers)[grep("metadata",colnames(dPlayers))])
   dPlayers$name <- paste(dPlayers$first_name,dPlayers$last_name)#x=1
@@ -260,9 +260,9 @@ draftPopulate <- function(picksToUpdate,dfDraft){
   return(dfDraft)
 }
 draftPopulateResults <- function(dfDraft,draftResults){
-  for(x in 1:nrow(dfDraft)){#x=1  #Rounds
-    for(t in 1:ncol(dfDraft)){#t=1  #Teams
-      pick <- index(draftResults)[draftResults$Round == x & draftResults$Team == colnames(dfDraft)[t]]
+  for(x in 1:nrow(dfDraft)){#x=11  #Rounds
+    for(t in 1:ncol(dfDraft)){#t=10  #Teams
+      pick <- draftResults[draftResults$Round == x & draftResults$Team == colnames(dfDraft)[t],"Overall"]
       draftResults[pick, 'Pick'] <- as.character(dfDraft[x,t])
     }
   }
@@ -288,7 +288,7 @@ updatePlayersFromSleeper <- function(fileName=gsub("Draft","Player",draftFile),l
     load(fileName)
   }else{
     allPlayers <- getPlayersFromSleeper()
-    allPlayers <- updateProjectionsFromSleeper(sPlayers=allPlayers,leagueId)
+    #allPlayers <- updateProjectionsFromSleeper(sPlayers=allPlayers,leagueId)
     save(allPlayers, file = fileName)
   }
   return(allPlayers)
@@ -298,23 +298,35 @@ updatePlayersFromSleeper <- function(fileName=gsub("Draft","Player",draftFile),l
 getPlayersFromSleeper <- function(){
   nflPlayers <- jsonlite::fromJSON("https://api.sleeper.app/v1/players/nfl", flatten = TRUE)
   #nflPlayers[[1]]
-  pL <- unlist(nflPlayers[[634]])
-  pL1 <- unlist(nflPlayers[[935]])
+  nflPlayersRows <- names(nflPlayers)
+  nflPlayerCols <- character()
+  for(nR in nflPlayersRows){
+    nflColNames <- names(nflPlayers[[nR]])
+    nflPlayerCols <- c(nflPlayerCols, nflColNames[!(nflColNames %in% nflPlayerCols)])
+  }
+  pL <- unlist(nflPlayers[["4034"]])
+  pL1 <- unlist(nflPlayers[["3198"]])
   pL <- rbind(pL,pL1)
   pL2 <- as.data.frame(pL, stringsAsFactors=FALSE)
   for(i in 1:ncol(pL2)){#i=1
-    if(!is.na(suppressWarnings(as.numeric(pL2[,i])))) pL2[,i] <- as.numeric(pL2[,i])
+    if(!is.na(suppressWarnings(any(as.numeric(pL2[,i]))))) pL2[,i] <- as.numeric(pL2[,i])
+  }
+  for(nC in nflPlayerCols){
+    if(!(nC %in% colnames(pL2))){
+      pL2[,nC] <- NA
+    }
   }
   allPlayers <- pL2[0,]
-  for(nP in 1:length(nflPlayers)){#nP=1
+  for(nI in 1:length(nflPlayersRows)){#nI=1
+    nP <- nflPlayersRows[nI]
     pL <- unlist(nflPlayers[[nP]])
     for(i in 1:ncol(allPlayers)){#i=1
       cName <- colnames(allPlayers)[i]
       if(cName %in% names(pL)){
         if(is.na(suppressWarnings(as.numeric(pL[cName])))){
-          allPlayers[nP,i] <- pL[cName]
+          allPlayers[nI,i] <- pL[cName]
         }else{
-          allPlayers[nP,i] <- as.numeric(pL[cName])
+          allPlayers[nI,i] <- as.numeric(pL[cName])
         }
       }
     }
@@ -376,23 +388,41 @@ correctSleeperNames <- function(sPlayers){
 }
 
 getNFLSchedule <- function(){
-  nflSchedFile <- "C:/Users/rmiles/Documents/School/R/FantasyFootball/NFL-Schedule-2019.csv"
+  nflSchedFile <- "Data/NFL-Schedule.csv"
   nflSched <- read.csv(nflSchedFile,stringsAsFactors = F)
   colnames(nflSched)[2:18] <- sapply(1:17,function(x) paste0("Wk",formatC(x, width=2, flag="0")) )
   #nflSched <- apply(nflSched,c(1,2),function(x) gsub("JAX","JAC",x))
   return(nflSched)
 }
 
+updateTeamNames <- function(ff){
+  oldNFLNames <- c("GBP","KCC","JAC","LVR","NEP","NOS","SFO","TBB","WAS")
+  newNFLNames <- c("GB","KC","JAX","LV","NE","NO","SF","TB","WSH")
+  ff[ff$team %in% oldNFLNames,'team'] <- newNFLNames[match(ff$team,oldNFLNames,nomatch = 0)]
+  return(ff)
+}
+
+updateStatNames <- function(ff){
+  oldnames <- c('exp','ceiling','floor','points_vor','ceiling_vor','floor_vor','drop_off')
+  newnames <- c('bye','upper','lower','vor','vorHigh','vorLow','dropoff')
+  oldnamesToReplace <- (oldnames %in% colnames(ff))
+  if(any(oldnamesToReplace)){
+    oldnames <- oldnames[oldnamesToReplace]; newnames <- newnames[oldnamesToReplace]
+    ff <- ff %>% rename_at(vars(oldnames), ~newnames)
+  }
+  return(ff)
+}
+
 ## Sleeper Projections ####
 #sP <- updateProjectionsFromSleeper(sPlayers,leagueId)
-updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2019,wks=1:16){#leagueId=469304291434164224
+updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2020,wks=1:16){#leagueId=469304291434164224
   for(wk in wks){#wk=3
     sPlayers <- getProjectionsFromSleeper(sPlayers,leagueId,sYr,wk)
   } 
   return(sPlayers)
 }
 
-getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2019,wk=1,ptsCol="pts_std"){#leagueId=469304291434164224
+getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2020,wk=1,ptsCol="pts_std"){#leagueId=469304291434164224
   sP <- sPlayers
   pCol <- paste0("PtsWk",formatC(wk, width=2, flag="0"))
   sP[,pCol] <- 0
@@ -562,4 +592,158 @@ leagueProjectionplayersAvailKable <- function(dPrj,pRrows=25){
     row_spec(which(dPrj2$pos=="DST"), background = "violet") %>%
     row_spec(which(dPrj2$pos=="K"), background = "lightgrey") 
   return(dPrj2k)
+}
+
+## ffanalytics Projections ####
+getFFAnalytics_Projections <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
+                                     season = 2020, week = 0, avgType = "robust"){
+  if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
+  src <- names(src_weights)#[src_weights > 0]
+  data_result <- scrape_data(src = src, pos = pos, season = season, week = week)
+  scoring_rules <- getFFAnalytics_ScoringSettings()
+  tier_thresholds <- getFFAnalytics_TierThreshold()
+  ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
+                                      tier_thresholds = tier_thresholds)
+  ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type)
+  ff_projections <- ff_projections %>% add_ecr() %>% add_risk() %>%
+    add_adpaav_override(type="ADP") %>% 
+    add_adpaav_override(type="AAV")
+  ff_projections <- ff_projections %>% add_player_info()
+  ff_projections <- ff_projections %>% mutate(name = paste(first_name,last_name))
+  if("rank" %in% colnames(ff_projections))
+    ff_projections <- ff_projections[order(ff_projections$rank),]
+  ff_projections$sleeper <- NA
+  ff_projections <- updateStatNames(ff_projections)
+  ff_projections <- updateTeamNames(ff_projections)
+  return(ff_projections)
+}
+
+getFFAnalytics_Weekly <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"),
+                                       season = 2020, weeks = 1:16, avgType = "robust"){
+  src_weights <- getFFAnalytics_SrcWeightsWeekly()
+  for(week in weeks){#week=3
+    ff_weekly <- getFFAnalytics_Projections(pos = pos, season = season, week = week, src_weights = src_weights, avgType = avgType)
+  }
+  return(ff_projections)
+}
+
+getManualProjections_Weekly <- function(ff, weeks = 1:16){
+  nflSched <- getNFLSchedule()
+  
+  for(week in weeks){#week=3
+    ff_weekly <- getFFAnalytics_Projections(pos = pos, season = season, week = week, src_weights = src_weights, avgType = avgType)
+  }
+  return(ff_projections)
+}
+
+getFFAnalytics_Projections_CSV <- function(fffile, pos = c("QB", "RB", "WR", "TE", "K", "DST"),
+                                       season = 2020, week = 0, avgType = "robust"){
+  if(file.exists(fffile)){
+    if(file.info(fffile)$mtime >= Sys.Date()){
+      ff_projections <- read.csv(fffile,stringsAsFactors = F)
+      return(ff_projections)
+    }
+  }
+  ff_projections <- getFFAnalytics_Projections(pos = pos, season = season, week = week, avgType = avgType)
+  write.csv(ff_projections,fffile,row.names = FALSE)
+  return(ff_projections)
+}
+
+add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESPN", "Yahoo", "NFL", "FFC"), type="ADP"){
+  sources <- match.arg(sources, several.ok = TRUE)
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week")
+  if (week != 0) {
+    warning("ADP data is not available for weekly data", 
+            call. = FALSE)
+    return(projection_table)
+  }
+  adp_tbl <- get_adp(sources, type = type)
+  varname <- paste0(tolower(type),"_diff")
+  projection_table <- left_join(projection_table, adp_tbl, 
+                                by = "id") %>% mutate(!!varname := rank - Avg)
+  colnames(projection_table)[colnames(projection_table) == "Avg"] <- tolower(type)
+  srcCols <- colnames(projection_table) %in% tolower(sources)
+  colnames(projection_table)[srcCols] <- sapply(colnames(projection_table)[srcCols],function(x) paste0(tolower(type),".",x)) 
+  projection_table %>% `attr<-`(which = "season", season) %>% 
+    `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
+}
+
+getFFAnalytics_SrcWeights <- function(){
+  # ffWeights <- c(CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, FFToday = 0.379,
+  #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
+  #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
+  #NumberFire throws error on projections..
+  ffWeights <- c(FantasySharks = 0.327, RTSports = 0.330, CBS = 0.344, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
+                 FantasyData = 0.428, FantasyPros = 0.220, FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
+  return(ffWeights)
+}
+
+getFFAnalytics_SrcWeightsWeekly <- function(){
+  # ffWeights <- c(CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, FFToday = 0.379,
+  #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
+  #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
+  #NumberFire throws error on projections..
+  ffWeights <- c(FantasySharks = 1, CBS = 0, FantasyFootballNerd = 0)
+  return(ffWeights)
+}
+
+getFFAnalytics_VorBaseline <- function(){
+  ffVOR <- c(QB = 13, RB = 35, WR = 36, TE = 13, K = 8, DST = 3, DL = 0, LB = 0, DB = 0)
+  return(ffVOR)
+}
+
+getFFAnalytics_TierThreshold <- function(){
+  ffTiers <- c(QB = 1, RB = 1, WR = 1, TE = 1, K = 1, DST = 0.1, DL = 1, DB = 1, LB = 1)
+  return(ffTiers)
+}
+
+getFFAnalytics_ScoringSettings <- function(){
+  ffScoreSettings <- list(
+    pass = list(
+      pass_att = 0, pass_comp = 0, pass_inc = 0, pass_yds = 0.04, pass_tds = 4,
+      pass_int = -3, pass_40_yds = 0,  pass_300_yds = 0, pass_350_yds = 0,
+      pass_400_yds = 0
+    ),
+    rush = list(
+      all_pos = TRUE,
+      rush_yds = 0.1,  rush_att = 0, rush_40_yds = 0, rush_tds = 6,
+      rush_100_yds = 0, rush_150_yds = 0, rush_200_yds = 0),
+    rec = list(
+      all_pos = TRUE,
+      rec = 0, rec_yds = 0.1, rec_tds = 6, rec_40_yds = 0, rec_100_yds = 0,
+      rec_150_yds = 0, rec_200_yds = 0
+    ),
+    misc = list(
+      all_pos = TRUE,
+      fumbles_lost = -3, fumbles_total = 0,
+      sacks = 0, two_pts = 2
+    ),
+    kick = list(
+      xp = 1.0, fg_0019 = 3.0,  fg_2029 = 3.0, fg_3039 = 3.0, fg_4049 = 4.0,
+      fg_50 = 5.0,  fg_miss = 0.0
+    ),
+    ret = list(
+      all_pos = TRUE,
+      return_tds = 6, return_yds = 0
+    ),
+    idp = list(
+      all_pos = TRUE,
+      idp_solo = 1, idp_asst = 0.5, idp_sack = 2, idp_int = 3,  idp_fum_force = 3,
+      idp_fum_rec = 2,  idp_pd = 1, idp_td = 6,  idp_safety = 2
+    ),
+    dst = list(
+      dst_fum_rec = 2,  dst_int = 2, dst_safety = 2, dst_sacks = 1, dst_td = 6,
+      dst_blk = 1.5, dst_ret_yds = 0, dst_pts_allowed = 0
+    ),
+    pts_bracket = list(
+      list(threshold = 0, points = 10),
+      list(threshold = 6, points = 7),
+      list(threshold = 20, points = 4),
+      list(threshold = 34, points = 0),
+      list(threshold = 99, points = -4)
+    )
+  )
+  return(ffScoreSettings)
 }
