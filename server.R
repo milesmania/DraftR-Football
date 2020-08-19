@@ -53,6 +53,10 @@ shinyServer(function(input, output, session) {
     values$rosterData <- rosters
     values$availChartY <- input$chartY
     values$availChartX <- input$chartX
+    
+    if(draftId == "" | leagueId == ""){
+      tabShowHide(tabId="tabs",hideIt = TRUE)
+    }
   })
   
   ## Refresh draft from sleeper ####
@@ -65,6 +69,32 @@ shinyServer(function(input, output, session) {
     values <- refreshProjections(values,output,input,session,ff)
   })
   
+  ## Save Settings Button ####
+  observeEvent(input$saveSettings,{
+    withProgress(message = 'Saving Settings', value = 0, {
+      incProgress(0.5,paste('Saving Config Settings ...'))
+      draftId <- input$draftId
+      leagueId <- input$leagueId
+      MyTeam <- input$myTeam
+      
+      if(draftId != "" & leagueId != ""){
+        teams <- getUsersFromSleeper(leagueId,draftId)
+        if(MyTeam=="") MyTeam <- teams[1]
+        names(teams) <- teams
+        updateSelectizeInput(session,"myTeam",choices = teams,selected = MyTeam)
+        tabShowHide(tabId="tabs",hideIt = FALSE)
+      }
+      config <- c('draftId'=draftId,'leagueId'=leagueId,'MyTeam'=MyTeam)
+      configTxt <- paste(sapply(1:length(config),function(x){paste(names(config[x]),config[x], sep = "=")}),
+                         collapse = "\n")
+      write(configTxt,file = "Assets/config.txt")
+      Sys.sleep(1)
+      
+      session$reload()
+      return()
+    })
+  })
+  
   ## Output updates ########################################### 
   # output$draftData = DT::renderDataTable({
   #   datatable(values$dForecast, options = list(lengthMenu = c(100, 50, 25, 10),
@@ -72,8 +102,5 @@ shinyServer(function(input, output, session) {
   #                                            pageLength = 50)) %>%
   #     formatStyle(valueColumns="Selected",target = 'cell',columns = "Pick",color = styleEqual(levels="forecast",values="lightblue"))
   # })
-  
-  
-  
   
 })

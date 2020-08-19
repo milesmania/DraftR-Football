@@ -57,6 +57,7 @@ roundupGraph <- function(ffDT,pos,playersTaken=NULL,nPlayers=25,yVal="pos_rank",
 #dForcast <- forecastDraft(draftResults,ff)
 #dForcast <- forecastDraft(draftResults,ff)
 forecastDraft <- function(draftResults,ff){
+  if(is.null(draftResults)) return(NULL)
   dForcast <- draftResults
   dForcast$Selected <- ifelse(dForcast$Pick!="","selected","forecast")
   dForcast$ForcastComment <- NA
@@ -192,6 +193,7 @@ setRoster <- function(draftedPlayers,showForecast=TRUE,
                       rosterPositions = c('QB-1','RB-1','RB-2','WR-1','WR-2','RB|WR-1','TE-1','DST-1','K-1','BE-1','BE-2','BE-3','BE-4','BE-5','BE-6','BE-7','BE-8')
 ){#draftedPlayers <- draftForecast
   #Set Roster Data
+  if(is.null(draftedPlayers)) return(NULL)
   teams <- unique(draftedPlayers$Team)
   rosters <- data.frame(matrix("",length(rosterPositions),length(teams)), stringsAsFactors = F)
   colnames(rosters) <- teams; rownames(rosters) <- rosterPositions; #rosters[,] <- ""
@@ -223,6 +225,20 @@ setRosterKable <- function(draftedPlayers,showForecast=TRUE,
   #Set Roster Data
   rosters <- setRoster(draftedPlayers,showForecast,rosterPositions)
   return(rosters)
+}
+
+setConfigTxt <- function(configFile="Assets/config.txt"){
+  if(!file.exists(configFile)){
+    assign("draftId","", envir = .GlobalEnv)
+    assign("leagueId","", envir = .GlobalEnv)
+    return(NULL)
+  }
+  key.val<-read.table(configFile, sep="=", col.names=c("key","value"), as.is=c(1,2))
+  config <- key.val$value; names(config) <- key.val$key
+  for(kV in 1:length(config)){
+    assign(names(config)[kV],config[kV], envir = .GlobalEnv)
+  }
+  return(config)
 }
 
 ## Sleeper Draft ####
@@ -373,6 +389,19 @@ getRostersFromSleeper <- function(){
   }
   
   return(sRoster)
+}
+
+getUsersFromSleeper <- function(leagueId,draftId){
+  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  if(length(sUsers)==0) return(NULL)
+  dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
+  nTeams <- dDraft[["settings"]]$teams
+  draftOrder <- sapply(1:nTeams,function(x){#x=1
+    draftSpot <- dDraft[["metadata"]][[paste0("slot_name_",x)]]
+    if(is.null(draftSpot)) draftSpot <- sUsers[x,'display_name']
+    draftSpot
+  })
+  return(draftOrder)
 }
 #allPlayers <- correctSleeperNames(allPlayers)
 correctSleeperNames <- function(sPlayers){

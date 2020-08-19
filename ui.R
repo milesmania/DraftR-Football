@@ -2,7 +2,7 @@ library(rhandsontable)
 library(plotly)
 
 shinyUI(
-  navbarPage("Dynasty Maker!!  (BETA)",
+  navbarPage("Dynasty Maker!!  (BETA)", id = "tabs",
              tabPanel("Draft",
                       actionButton("RefreshDraft", "Refresh From Sleeper"),
                       htmlOutput("nextPick"),
@@ -61,6 +61,15 @@ shinyUI(
                       h3("Forecasted Draft"),
                       DT::dataTableOutput("dataForcastALL"),
                       h3("Available Players"),
-                      DT::dataTableOutput("dataAvailALL"))
+                      DT::dataTableOutput("dataAvailALL")),
+             tabPanel("Settings",
+                      h2("Draft Settings"),
+                      textInput("leagueId","Sleeer League Id", value = leagueId),
+                      textInput("draftId","Sleeper Draft Id", value = draftId),
+                      conditionalPanel(condition = "input.myTeam != ''",
+                                       selectizeInput("myTeam","Select My Team",choices=teams,selected=MyTeam)
+                                       ),
+                      actionButton("saveSettings","Save Settings")
+             )
   )
 )

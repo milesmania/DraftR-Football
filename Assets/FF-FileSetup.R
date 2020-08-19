@@ -6,11 +6,15 @@ fffile <- paste0("Data/ffa_customrankings",Year(Sys.Date()),"-0.csv")
 ffProjections <- getFFAnalytics_Projections_CSV(fffile)
 
 #469196363834322944 #2019 MXC 469304291434164225 #340916602432159744 #2018 MXC 338482281133907968 #340196925133344768 #340208591887724544
-draftId <- "600049009964412929"
-leagueId <- "600049009964412928"
-#teams <- c('Harvey','Leo','Eric','Ryan','Forrest','Sue','Emily','Julianne','Deb','Dom')
-teams <- c('Miles','Higgins','Nick','Clif','Inman','James','Ben','Aaron','Cusick','Joel','Nate','Neal')
-MyTeam <- 'Miles' #MyTeam <- 'Ryan'
+config <- setConfigTxt()
+if(is.null(config)){
+  draftId <- leagueId <- MyTeam <- ""
+  teams <- character()
+} 
+if(nchar(leagueId)>0){
+  teams <- getUsersFromSleeper(leagueId,draftId)
+}
+
 rosterPositions <- c('QB-1','RB-1','RB-2','WR-1','WR-2','RB|WR-1','TE-1','DST-1','K-1','BE-1','BE-2','BE-3','BE-4','BE-5','BE-6','BE-7','BE-8')
 
 starterPositions <- rosterPositions[!grepl("BE",rosterPositions)]

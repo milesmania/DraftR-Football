@@ -148,3 +148,22 @@ refreshProjections <- function(values,output, input, session, ...){
   output$leagueProjWeek = renderText(leagueProjection_WeekKable(leagueProjection_Week(lPrj,input$leaguePrjWk)))
   return(values)
 }
+
+## Hide/Show Tabs ####
+tabShowHide <- function(tabId, hideIt = TRUE){
+  if(hideIt){
+    hideTab(inputId = tabId, target = "Draft")
+    hideTab(inputId = tabId, target = "Roster")
+    hideTab(inputId = tabId, target = "Roster")
+    hideTab(inputId = tabId, target = "Projections")
+    hideTab(inputId = tabId, target = "Available Charts")
+    hideTab(inputId = tabId, target = "Tables")
+  }else{
+    showTab(inputId = tabId, target = "Draft")
+    showTab(inputId = tabId, target = "Roster")
+    showTab(inputId = tabId, target = "Roster")
+    showTab(inputId = tabId, target = "Projections")
+    showTab(inputId = tabId, target = "Available Charts")
+    showTab(inputId = tabId, target = "Tables")
+  }
+}
