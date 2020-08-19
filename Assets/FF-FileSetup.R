@@ -36,4 +36,7 @@ ff <- ff[!grepl("LB|DL|DB",ff$pos),]; rownames(ff) <- 1:nrow(ff)
 
 ff$pId <- unlist(sapply(1:nrow(ff),function(x) paste(ff[x,'name'],ff[x,'team'],ff[x,'pos'],sep="|")))
 
-allPlayers <- updatePlayersFromSleeper(fileName=gsub("Draft","Player",draftFile),leagueId)
+ff <- getManualProjections_Weekly(ff=ff)
+
+pFileName <- gsub("Draft","Player",draftFile)
+allPlayers <- updatePlayersFromSleeper(pFileName=pFileName,leagueId)

@@ -174,7 +174,7 @@ draftChart <- function(dForcast){
               actualHi = sum(upper[Selected=="selected"]),
               forecast = sum(points),
               forecastLo = sum(lower),
-              forecastHi = sum(upper))
+              forecastHi = sum(upper), .groups = 'drop')
   draftPoints$Team <- factor(draftPoints$Team)
   p <- ggplot(draftPoints, aes(x=actual, y=forecast, color=Team, fill=Team)) 
   p <- p + geom_rect(aes(xmin=actualLo,xmax=actualHi, ymin=forecastLo,ymax=forecastHi), alpha = 0.5)+
@@ -283,14 +283,18 @@ updateRostersFromSleeper <- function(leagueId,draftResults){#leagueId=4693042914
 }
 
 #leagueId=469304291434164224
-updatePlayersFromSleeper <- function(fileName=gsub("Draft","Player",draftFile),leagueId){
-  if(file.exists(fileName)){
-    load(fileName)
-  }else{
-    allPlayers <- getPlayersFromSleeper()
-    #allPlayers <- updateProjectionsFromSleeper(sPlayers=allPlayers,leagueId)
-    save(allPlayers, file = fileName)
+updatePlayersFromSleeper <- function(pFileName=gsub("Draft","Player",draftFile), ff,leagueId){
+  if(file.exists(pFileName)){
+    if(file.info(fffile)$mtime >= Sys.Date()){
+      load(pFileName)
+      return(allPlayers)
+    }
   }
+  
+  allPlayers <- getPlayersFromSleeper()
+  #allPlayers <- updateProjectionsFromSleeper(sPlayers=allPlayers,leagueId)
+  save(allPlayers, file = pFileName)
+    
   return(allPlayers)
 }
 
@@ -335,6 +339,7 @@ getPlayersFromSleeper <- function(){
   sPlayers <- allPlayers#[!is.na(allPlayers$position) & !is.na(allPlayers$team),]
   sPlayers$name <- paste(sPlayers$first_name,sPlayers$last_name)#x=1
   sPlayers <- correctSleeperNames(sPlayers)
+  sPlayers <- updateTeamNames(sPlayers)
   if(nrow(sPlayers) > 0){
     sPlayers$pId <- sapply(1:nrow(sPlayers), function(x){#x=1
       if(!is.na(sPlayers[x,'position']) && sPlayers[x,'position'] == "DEF"){
@@ -403,8 +408,8 @@ updateTeamNames <- function(ff){
 }
 
 updateStatNames <- function(ff){
-  oldnames <- c('exp','ceiling','floor','points_vor','ceiling_vor','floor_vor','drop_off')
-  newnames <- c('bye','upper','lower','vor','vorHigh','vorLow','dropoff')
+  oldnames <- c('ceiling','floor','points_vor','ceiling_vor','floor_vor','drop_off')
+  newnames <- c('upper','lower','vor','vorHigh','vorLow','dropoff')
   oldnamesToReplace <- (oldnames %in% colnames(ff))
   if(any(oldnamesToReplace)){
     oldnames <- oldnames[oldnamesToReplace]; newnames <- newnames[oldnamesToReplace]
@@ -438,8 +443,8 @@ getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2020,wk=1,ptsCol="pt
   return(sP)
 }
 
-leagueProjection <- function(allPlayers,draftForecast,starterPositions,wks=1:16){
-  aPlayers <- allPlayers[,c("pId",colnames(allPlayers)[grep("Wk",colnames(allPlayers))])]
+leagueProjection <- function(ff,draftForecast,starterPositions,wks=1:16){
+  aPlayers <- ff[,c("pId",colnames(ff)[grep("Wk",colnames(ff))])]
   colnames(aPlayers)[1] <- "Pick"
   dForcast <- draftForecast[,1:6]
   dPrj <- merge(dForcast,aPlayers,all.x=TRUE)
@@ -480,7 +485,7 @@ leagueProjection <- function(allPlayers,draftForecast,starterPositions,wks=1:16)
 }
 
 leagueProjection_Plot <- function(lPrj){
-  lPrj2 <- subset(lPrj,!grepl("BENCH|TOTAL",Position)) %>% group_by(Team,Wk) %>% summarise(Pts = sum(Pts,na.rm=T))
+  lPrj2 <- subset(lPrj,!grepl("BENCH|TOTAL",Position)) %>% group_by(Team,Wk) %>% summarise(Pts = sum(Pts,na.rm=T), .groups = 'drop')
   p <- ggplot(lPrj2) + geom_line(aes(x=Wk,y=Pts,color=Team)) + theme_fivethirtyeight() +
     labs(title = "Weekly Points Projections")
   
@@ -488,7 +493,7 @@ leagueProjection_Plot <- function(lPrj){
 }
 
 leagueProjection_Table <- function(lPrj){
-  lPrj2 <- subset(lPrj,!grepl("TOTAL|BE",Position)) %>% group_by(Team,Wk) %>% summarise(Pts = sum(Pts,na.rm=T))
+  lPrj2 <- subset(lPrj,!grepl("TOTAL|BE",Position)) %>% group_by(Team,Wk) %>% summarise(Pts = sum(Pts,na.rm=T), .groups = 'drop')
   lPrj3 <- lPrj2 %>% tidyr::spread(Wk,Pts)
   lPrj3$Regular <- sapply(1:nrow(lPrj3), function(x) round(sum(lPrj3[x,2:15], na.rm=T)/14,2))
   lPrj3$Playoff <- sapply(1:nrow(lPrj3), function(x) round(sum(lPrj3[x,16:17], na.rm=T)/2,2))
@@ -498,7 +503,7 @@ leagueProjection_Table <- function(lPrj){
 
 leagueProjection_Kable <- function(lPrj3){
   lPrj3K <- lPrj3 %>% mutate_if(is.numeric, function(x){
-    cell_spec(x, bold = T, color = spec_color(x,end=0.8,option="C",direction=-1),
+    cell_spec(round(x,2), bold = T, color = spec_color(x,end=0.8,option="C",direction=-1),
               font_size = spec_font_size(x))
   }) %>% 
     kable(escape = F, format="html", align = "c", digits = 1) %>%
@@ -528,16 +533,17 @@ leagueProjection_RankKable <- function(lPrj4){
 }
 
 leagueProjection_TeamSeason <- function(lPrj,team){
-  lTeam <- subset(lPrj,Team == team) %>% group_by(Position,Wk) %>% summarise(Player = paste(sum(Pts,na.rm=T),"||",Pick))
+  lTeam <- subset(lPrj,Team == team) %>% group_by(Position,Wk) %>% summarise(Player = paste(sum(Pts,na.rm=T),"||",Pick), .groups = 'drop')
   lPrj3 <- lPrj2 %>% tidyr::spread(Wk,Pts)
   lPrj3 <- as.data.frame(lPrj3)
   return(lPrj3)
 }
 
 #leagueProjection_Week(lPrj,wk)
-leagueProjection_Week <- function(lPrj,wk){
+#lPrj <- leagueProjection(ff, draftForecast,starterPositions)
+leagueProjection_Week <- function(lPrj,wk){#wk=3
   positions <- unique(lPrj$Position)
-  lWk <- subset(lPrj,Wk == wk) %>% group_by(Position,Team) %>% summarise(Player = paste(sum(Pts,na.rm=T),"||",Pick))
+  lWk <- subset(lPrj,Wk == wk) %>% group_by(Position,Team) %>% summarise(Player = paste(round(sum(Pts,na.rm=T),1),"||",Pick), .groups='drop')
   #lWkTotal <- subset(lPrj,Wk == wk & Position != "BENCH") %>% group_by(Team) %>% summarise(TOTAL = paste(sum(Pts,na.rm=T),"|| TOTAL"))
   lWk2 <- lWk %>% tidyr::spread(Team,Player)
   lWk2 <- as.data.frame(lWk2,stringsAsFactors=F); rownames(lWk2) <- lWk2$Position; lWk2 <- lWk2[,2:ncol(lWk2)]
@@ -609,6 +615,7 @@ getFFAnalytics_Projections <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST
     add_adpaav_override(type="ADP") %>% 
     add_adpaav_override(type="AAV")
   ff_projections <- ff_projections %>% add_player_info()
+  ff_projections <- ff_projections %>% add_player_bye()
   ff_projections <- ff_projections %>% mutate(name = paste(first_name,last_name))
   if("rank" %in% colnames(ff_projections))
     ff_projections <- ff_projections[order(ff_projections$rank),]
@@ -630,10 +637,12 @@ getFFAnalytics_Weekly <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"),
 getManualProjections_Weekly <- function(ff, weeks = 1:16){
   nflSched <- getNFLSchedule()
   
-  for(week in weeks){#week=3
-    ff_weekly <- getFFAnalytics_Projections(pos = pos, season = season, week = week, src_weights = src_weights, avgType = avgType)
+  for(wk in weeks){#wk=1
+    pCol <- paste0("PtsWk",formatC(wk, width=2, flag="0"))
+    ff[,pCol] <- 0
+    ff[ff$bye != wk,pCol] <- ff[ff$bye != wk, "points"]/16
   }
-  return(ff_projections)
+  return(ff)
 }
 
 getFFAnalytics_Projections_CSV <- function(fffile, pos = c("QB", "RB", "WR", "TE", "K", "DST"),
@@ -668,6 +677,21 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
   colnames(projection_table)[srcCols] <- sapply(colnames(projection_table)[srcCols],function(x) paste0(tolower(type),".",x)) 
   projection_table %>% `attr<-`(which = "season", season) %>% 
     `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
+}
+
+add_player_bye <- function(projection_table){
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week")
+  nflSched <- getNFLSchedule()
+  colnames(nflSched) <- tolower(colnames(nflSched))
+  nflSched$bye <- sapply(1:nrow(nflSched),function(x){#x=1
+    byeWk <- colnames(nflSched)[nflSched[x,] == "BYE"]
+    bye <- as.integer(gsub("wk","",byeWk))
+  })
+  select(nflSched, team, bye) %>% inner_join(projection_table, by = "team") %>% 
+    `attr<-`(which = "season", season) %>% `attr<-`(which = "week", 
+                                                    week) %>% `attr<-`(which = "lg_type", lg_type)
 }
 
 getFFAnalytics_SrcWeights <- function(){
@@ -746,4 +770,37 @@ getFFAnalytics_ScoringSettings <- function(){
     )
   )
   return(ffScoreSettings)
+}
+
+getTeamRankingDataDownload <- function(download_location,fangraphFile,dataURL,dataFile){
+  
+  driver <- rsDriver(browser=c("chrome"), chromever="83.0.4103.39", port = 4444L)
+  remote_driver <- driver[["client"]] #remote_driver$open()
+  
+  dataURL <- 'https://www.teamrankings.com/nfl/stat/opponent-rushing-yards-per-game'
+  rushYrdsTable <- getTeamRankingDataTable(remote_driver,dataURL)
+  
+  dataURL <- 'https://www.teamrankings.com/nfl/stat/opponent-passing-yards-per-game'
+  passYrdsTable <- getTeamRankingDataTable(remote_driver,dataURL)
+  
+  remote_driver$close()
+  driver$server$stop()
+  system("taskkill /im java.exe /f", intern=FALSE, ignore.stdout=FALSE)
+  
+}
+
+getTeamRankingDataTable <- function(remote_driver, dataURL){
+  
+  remote_driver$navigate(dataURL)
+  
+  Sys.sleep(2)
+  exportData_Link <- remote_driver$findElement(using = 'id', value = 'DataTables_Table_0')
+  webElem <- exportData_Link$getElementAttribute("outerHTML")[[1]]
+  table <- readHTMLTable(webElem, header = TRUE, as.data.frame = TRUE)[[1]]
+  
+  return(table)
+}
+
+getDefenseStrength <- function(ff){
+  ffDef <- ff[ff$pos == "DST",]
 }

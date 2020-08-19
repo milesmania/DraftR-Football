@@ -32,7 +32,7 @@ if(file.exists(draftFile)){
   draftResults$Pick <- ""
   draftForecast <- forecastDraft(draftResults,ff)
   
-  #seasonProjection <- leagueProjection(allPlayers,draftForecast,starterPositions)
+  seasonProjection <- leagueProjection(ff,draftForecast,starterPositions)
   
   #Traded Draft Picks
   # if(draftResults[96,]$Team == "Miles") draftResults[96,]$Team <- "Nate"
@@ -41,5 +41,5 @@ if(file.exists(draftFile)){
   StartPickTime <- Sys.time()# + 4*60
   playersTakenCount <- 0
   
-  save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,playersTakenCount,StartPickTime, file = draftFile)
+  save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
 }
