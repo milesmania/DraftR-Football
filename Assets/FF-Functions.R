@@ -245,12 +245,7 @@ setConfigTxt <- function(configFile="Assets/config.txt"){
 #picksToUpdate <- updateDraftFromSleeper(draftId,draftResults)
 #dfDraft <- draftPopulate(picksToUpdate,dfDraft)
 updateDraftFromSleeper <- function(draftId,draftResults){#draftId=469304291434164225
-  dPlayers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId,"/picks"), flatten = TRUE)
-  if(is.null(dPlayers) || length(dPlayers)==0) return(data.frame('round'=integer(),'draft_slot'=integer(),'pId'=character(),stringsAsFactors = F))
-  
-  colnames(dPlayers)[grep("metadata",colnames(dPlayers))] <- gsub("metadata.","",colnames(dPlayers)[grep("metadata",colnames(dPlayers))])
-  dPlayers$name <- paste(dPlayers$first_name,dPlayers$last_name)#x=1
-  dPlayers <- correctSleeperNames(dPlayers)
+  dPlayers <- getDraftFromSleeper(draftId)
   if(nrow(dPlayers) > 0){
     dPlayers$pId <- sapply(1:nrow(dPlayers), function(x){
       if(dPlayers[x,'position'] == "DEF"){
@@ -262,8 +257,9 @@ updateDraftFromSleeper <- function(draftId,draftResults){#draftId=46930429143416
     unpicked <- draftResults[draftResults$Pick=="","Overall"]
     slPicked <- dPlayers$pick_no
     picksToFill <- slPicked[slPicked %in% unpicked]
+    return(dPlayers[dPlayers$pick_no %in% picksToFill,c('round','draft_slot','pId')])
   }
-  return(dPlayers[dPlayers$pick_no %in% picksToFill,c('round','draft_slot','pId')])
+  return(dPlayers)
 }
 
 draftPopulate <- function(picksToUpdate,dfDraft){
@@ -299,7 +295,7 @@ updateRostersFromSleeper <- function(leagueId,draftResults){#leagueId=4693042914
 }
 
 #leagueId=469304291434164224
-updatePlayersFromSleeper <- function(pFileName=gsub("Draft","Player",draftFile), ff,leagueId){
+updatePlayersFromSleeper <- function(pFileName=gsub("Draft","Player",draftFile), ...){
   if(file.exists(pFileName)){
     if(file.info(fffile)$mtime >= Sys.Date()){
       load(pFileName)
@@ -315,94 +311,7 @@ updatePlayersFromSleeper <- function(pFileName=gsub("Draft","Player",draftFile),
 }
 
 
-getPlayersFromSleeper <- function(){
-  nflPlayers <- jsonlite::fromJSON("https://api.sleeper.app/v1/players/nfl", flatten = TRUE)
-  #nflPlayers[[1]]
-  nflPlayersRows <- names(nflPlayers)
-  nflPlayerCols <- character()
-  for(nR in nflPlayersRows){
-    nflColNames <- names(nflPlayers[[nR]])
-    nflPlayerCols <- c(nflPlayerCols, nflColNames[!(nflColNames %in% nflPlayerCols)])
-  }
-  pL <- unlist(nflPlayers[["4034"]])
-  pL1 <- unlist(nflPlayers[["3198"]])
-  pL <- rbind(pL,pL1)
-  pL2 <- as.data.frame(pL, stringsAsFactors=FALSE)
-  for(i in 1:ncol(pL2)){#i=1
-    if(!is.na(suppressWarnings(any(as.numeric(pL2[,i]))))) pL2[,i] <- as.numeric(pL2[,i])
-  }
-  for(nC in nflPlayerCols){
-    if(!(nC %in% colnames(pL2))){
-      pL2[,nC] <- NA
-    }
-  }
-  allPlayers <- pL2[0,]
-  for(nI in 1:length(nflPlayersRows)){#nI=1
-    nP <- nflPlayersRows[nI]
-    pL <- unlist(nflPlayers[[nP]])
-    for(i in 1:ncol(allPlayers)){#i=1
-      cName <- colnames(allPlayers)[i]
-      if(cName %in% names(pL)){
-        if(is.na(suppressWarnings(as.numeric(pL[cName])))){
-          allPlayers[nI,i] <- pL[cName]
-        }else{
-          allPlayers[nI,i] <- as.numeric(pL[cName])
-        }
-      }
-    }
-  }
-  #sPlayers <- correctSleeperNames(allPlayers)
-  sPlayers <- allPlayers#[!is.na(allPlayers$position) & !is.na(allPlayers$team),]
-  sPlayers$name <- paste(sPlayers$first_name,sPlayers$last_name)#x=1
-  sPlayers <- correctSleeperNames(sPlayers)
-  sPlayers <- updateTeamNames(sPlayers)
-  if(nrow(sPlayers) > 0){
-    sPlayers$pId <- sapply(1:nrow(sPlayers), function(x){#x=1
-      if(!is.na(sPlayers[x,'position']) && sPlayers[x,'position'] == "DEF"){
-        paste(sPlayers[x,'last_name'], sPlayers[x,'team'], "DST", sep="|")
-      }else{
-        paste(sPlayers[x,'name'], sPlayers[x,'team'], sPlayers[x,'position'], sep="|")
-      }
-    })
-  }
-  return(sPlayers)
-}
 
-getRostersFromSleeper <- function(){
-  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
-  sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
-  
-  sTrans <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/transactions"), flatten = TRUE)
-  sPicks <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/traded_picks"), flatten = TRUE)
-  sPlayers <- getPlayersFromSleeper()
-  #sRoster[[5]]
-  sRoster$User <- sapply(sRoster$owner_id,function(x) sUsers[sUsers$user_id==x, 'display_name'])
-  allRoster <- data.frame(user_id=numeric(),user=character(),player_id=character(),pId=character(),stringsAsFactors = F)
-  for(i in 1:nrow(sRoster)){#i=1
-    pRoster <- allRoster[0,]
-    pPlayer_ids <- unlist(sRoster[i,'players'])
-    pPlayers <- sPlayers[sPlayers$player_id %in% pPlayer_ids, 'pId']
-    pRoster <- data.frame(user_id=rep(sRoster[i,'owner_id'],length(pPlayers)), 
-                          user=rep(sRoster[i,'User'],length(pPlayers)), 
-                          player_id = pPlayer_ids, pId = pPlayers,stringsAsFactors = F)
-    allRoster <- rbind(allRoster,pRoster)
-  }
-  
-  return(sRoster)
-}
-
-getUsersFromSleeper <- function(leagueId,draftId){
-  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
-  if(length(sUsers)==0) return(NULL)
-  dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
-  nTeams <- dDraft[["settings"]]$teams
-  draftOrder <- sapply(1:nTeams,function(x){#x=1
-    draftSpot <- dDraft[["metadata"]][[paste0("slot_name_",x)]]
-    if(is.null(draftSpot)) draftSpot <- sUsers[x,'display_name']
-    draftSpot
-  })
-  return(draftOrder)
-}
 #allPlayers <- correctSleeperNames(allPlayers)
 correctSleeperNames <- function(sPlayers){
   sPlayers[sPlayers$player_id == 1408,"name"] <- "LeVeon Bell"
@@ -629,12 +538,263 @@ leagueProjectionplayersAvailKable <- function(dPrj,pRrows=25){
   return(dPrj2k)
 }
 
+## Sleeper API Functions ####
+getDraftFromSleeper <- function(draftId){
+  dPlayers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId,"/picks"), flatten = TRUE)
+  if(is.null(dPlayers) || length(dPlayers)==0) return(data.frame('round'=integer(),'draft_slot'=integer(),'pId'=character(),stringsAsFactors = F))
+  
+  colnames(dPlayers)[grep("metadata",colnames(dPlayers))] <- gsub("metadata.","",colnames(dPlayers)[grep("metadata",colnames(dPlayers))])
+  dPlayers$name <- paste(dPlayers$first_name,dPlayers$last_name)#x=1
+  dPlayers <- correctSleeperNames(dPlayers)
+  if(nrow(dPlayers) > 0){
+    dPlayers$pId <- sapply(1:nrow(dPlayers), function(x){
+      if(dPlayers[x,'position'] == "DEF"){
+        paste(dPlayers[x,'last_name'], dPlayers[x,'team'], "DST", sep="|")
+      }else{
+        paste(dPlayers[x,'name'], dPlayers[x,'team'], dPlayers[x,'position'], sep="|")
+      }
+    })
+  }
+  return(dPlayers)
+}
+
+getPlayersFromSleeper <- function(){
+  nflPlayers <- jsonlite::fromJSON("https://api.sleeper.app/v1/players/nfl", flatten = TRUE)
+  #nflPlayers[[1]]
+  nflPlayersRows <- names(nflPlayers)
+  nflPlayerCols <- character()
+  for(nR in nflPlayersRows){
+    nflColNames <- names(nflPlayers[[nR]])
+    nflPlayerCols <- c(nflPlayerCols, nflColNames[!(nflColNames %in% nflPlayerCols)])
+  }
+  pL <- unlist(nflPlayers[["4034"]])
+  pL1 <- unlist(nflPlayers[["3198"]])
+  pL <- rbind(pL,pL1)
+  pL2 <- as.data.frame(pL, stringsAsFactors=FALSE)
+  for(i in 1:ncol(pL2)){#i=1
+    if(!is.na(suppressWarnings(any(as.numeric(pL2[,i]))))) pL2[,i] <- as.numeric(pL2[,i])
+  }
+  for(nC in nflPlayerCols){
+    if(!(nC %in% colnames(pL2))){
+      pL2[,nC] <- NA
+    }
+  }
+  allPlayers <- pL2[0,]
+  for(nI in 1:length(nflPlayersRows)){#nI=1
+    nP <- nflPlayersRows[nI]
+    pL <- unlist(nflPlayers[[nP]])
+    for(i in 1:ncol(allPlayers)){#i=1
+      cName <- colnames(allPlayers)[i]
+      if(cName %in% names(pL)){
+        if(is.na(suppressWarnings(as.numeric(pL[cName])))){
+          allPlayers[nI,i] <- pL[cName]
+        }else{
+          allPlayers[nI,i] <- as.numeric(pL[cName])
+        }
+      }
+    }
+  }
+  #sPlayers <- correctSleeperNames(allPlayers)
+  sPlayers <- allPlayers#[!is.na(allPlayers$position) & !is.na(allPlayers$team),]
+  sPlayers$name <- paste(sPlayers$first_name,sPlayers$last_name)#x=1
+  sPlayers <- correctSleeperNames(sPlayers)
+  sPlayers <- updateTeamNames(sPlayers)
+  if(nrow(sPlayers) > 0){
+    sPlayers$pId <- sapply(1:nrow(sPlayers), function(x){#x=1
+      if(!is.na(sPlayers[x,'position']) && sPlayers[x,'position'] == "DEF"){
+        paste(sPlayers[x,'last_name'], sPlayers[x,'team'], "DST", sep="|")
+      }else{
+        paste(sPlayers[x,'name'], sPlayers[x,'team'], sPlayers[x,'position'], sep="|")
+      }
+    })
+  }
+  return(sPlayers)
+}
+
+getRostersFromSleeper <- function(leagueId,pFileName=NULL,sPlayers=NULL){
+  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
+  
+  sPicks <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/traded_picks"), flatten = TRUE)
+  if(is.null(pFileName)) pFileName <- "Data/FFPlayerData.RData"
+  if(is.null(sPlayers)) sPlayers <- updatePlayersFromSleeper(pFileName=pFileName,leagueId)
+  #sRoster[[5]]
+  sRoster$User <- sapply(sRoster$owner_id,function(x) sUsers[sUsers$user_id==x, 'display_name'])
+  allRoster <- data.frame(user_id=numeric(),user=character(),player_id=character(),pId=character(),stringsAsFactors = F)
+  for(i in 1:nrow(sRoster)){#i=1
+    pRoster <- allRoster[0,]
+    pPlayer_ids <- unlist(sRoster[i,'players'])
+    pPlayers <- sapply(pPlayer_ids,function(x) sPlayers[sPlayers$player_id == x, 'pId'])
+    pRoster <- data.frame(user_id=rep(sRoster[i,'owner_id'],length(pPlayers)), 
+                          user=rep(sRoster[i,'User'],length(pPlayers)), 
+                          player_id = pPlayer_ids, pId = pPlayers,stringsAsFactors = F)
+    allRoster <- rbind(allRoster,pRoster)
+  }
+  
+  return(allRoster)
+}
+#getUsersFromSleeper(leagueId,draftId)
+getUsersFromSleeper <- function(leagueId,draftId){
+  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  if(length(sUsers)==0) return(NULL)
+  dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
+  nTeams <- dDraft[["settings"]]$teams
+  draftOrder <- sapply(1:nTeams,function(x){#x=1
+    draftSpot <- dDraft[["metadata"]][[paste0("slot_name_",x)]]
+    if(is.null(draftSpot)) draftSpot <- sUsers[x,'display_name']
+    draftSpot
+  })
+  return(draftOrder)
+}
+#getUserLeaguesFromSleeper(userId)
+getUserLeaguesFromSleeper <- function(userId,seasons=NULL){#userId=339913611239542784
+  if(is.null(seasons)) seasons <- Year(Sys.Date())-0:5
+  sLeagues <- NULL
+  for(s in seasons){#s=2019
+    sLeague <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/user/",userId,"/leagues/nfl/",s), flatten = TRUE)
+    if(length(sLeague) > 0){
+      if(is.null(sLeagues)){
+        sLeagues <- sLeague  
+      }else{
+        if(any(!(colnames(sLeague) %in% colnames(sLeagues)))){
+          sLeagues[,colnames(sLeague)[!(colnames(sLeague) %in% colnames(sLeagues))]] <- NA
+        }
+        if(any(!(colnames(sLeagues) %in% colnames(sLeague)))){
+          sLeague[,colnames(sLeagues)[!(colnames(sLeagues) %in% colnames(sLeague))]] <- NA
+        }
+        sLeagues <- rbind(sLeagues,sLeague)
+      }
+    } 
+  }
+  return(sLeagues)
+}
+
+getLeagueDraftsFromSleeper <- function(leagueId){#leagueIds<-unique(sLeagues$league_id)
+  sDrafts <- NULL
+  for(s in leagueId){
+    sDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",s,"/drafts/"), flatten = TRUE)
+    if(length(sDraft) > 0){
+      if(is.null(sDrafts)){
+        sDrafts <- sDraft  
+      }else{
+        if(any(!(colnames(sDraft) %in% colnames(sDrafts)))){
+          sDrafts[,colnames(sDraft)[!(colnames(sDraft) %in% colnames(sDrafts))]] <- NA
+        }
+        if(any(!(colnames(sDrafts) %in% colnames(sDraft)))){
+          sDraft[,colnames(sDrafts)[!(colnames(sDrafts) %in% colnames(sDraft))]] <- NA
+        }
+        sDrafts <- rbind(sDrafts,sDraft)
+      }
+    } 
+  }
+  return(sDrafts)
+}
+
+getLeagueTransFromSleeper <- function(leagueId, wks = 0:20){#leagueIds<-unique(sLeagues$league_id)
+  sTrans <- NULL
+  for(w in wks){#w=2
+    sTran <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/transactions/",w), flatten = TRUE)
+    if(length(sTran) > 0){
+      sTran <- sTran[sTran$status=="complete",]
+      sTran$Week <- w; sTran$add <- NA; sTran$drop <- NA
+      if(any(sTran$type=="trade")){
+        sTradesRaw <- sTran[sTran$type=="trade",]
+        sTrades <- sTradesRaw[0,]
+        sCols <- colnames(sTrades)[grepl("drops|adds",colnames(sTrades))]
+        for(sT in 1:nrow(sTradesRaw)){#sT=1
+          sRosters <- sTradesRaw[sT,'roster_ids'][[1]]
+          for(sR in sRosters){#sR <- sRosters[2]
+            sTrade <- sTradesRaw[sT,]
+            sTrade$roster_ids <- sR
+            aCols <- sCols[which(sapply(sCols,function(x) sTradesRaw[sT,x]==sR))]
+            sTrade[,sCols[!(sCols %in% aCols)]] <- NA
+            sTrades[nrow(sTrades)+1,] <- sTrade
+          }
+        }
+        if(nrow(sTrades)>0){
+          sTranNoTrade <- sTran[!(sTran$transaction_id %in% sTrades$transaction_id),]
+          sTran <- rbind(sTranNoTrade,sTrades)
+        }
+      }
+      for(aCol in colnames(sTran)[grepl("drops|adds",colnames(sTran))]){
+        aSplit <- strsplit(aCol,'\\.')[[1]]
+        aType <- substr(aSplit[1],1,nchar(aSplit[1])-1)
+        aPlayerId <- aSplit[2]
+        sTran[!is.na(sTran[aCol]),aType] <- aPlayerId
+      }
+      sTran <- sTran[,!grepl("drops|adds",colnames(sTran))]
+      if(is.null(sTrans)){
+        sTrans <- sTran  
+      }else{
+        if(any(!(colnames(sTran) %in% colnames(sTrans)))){
+          sTrans[,colnames(sTran)[!(colnames(sTran) %in% colnames(sTrans))]] <- NA
+        }
+        if(any(!(colnames(sTrans) %in% colnames(sTran)))){
+          sTran[,colnames(sTrans)[!(colnames(sTrans) %in% colnames(sTran))]] <- NA
+        }
+        sTrans <- rbind(sTrans,sTran)
+      }
+    } 
+  }
+  return(sTrans)
+}
+
+#sKeepers <- getKeeperDraftRound(leagueId = "469304291434164224",ff,writeFile="Data/Keepers.csv")
+getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL){
+  #leagueId <- "469304291434164224"
+  if(is.null(draftId)) draftId <- getLeagueDraftsFromSleeper(leagueId)$draft_id
+  sDraft <- getDraftFromSleeper(draftId)
+  sRoster <- getRostersFromSleeper(leagueId)
+  sTrans <- getLeagueTransFromSleeper(leagueId)
+  sPlayers <- updatePlayersFromSleeper()
+  sDrafted <- left_join(sRoster,sDraft[,c("player_id","round")], by=c("player_id"))
+  sAdds <- sTrans %>% filter(!grepl("trade|commiss",type)) %>% select(type,Week,add,drop)
+  sCommiss <- sTrans %>% filter(grepl("commiss",type)) %>% select(type,Week,add,drop) %>% filter(!(add %in% sAdds$add))
+  if(nrow(sCommiss)>0) sAdds <- rbind(sAdds,sCommiss); sAdds <- sAdds[order(sAdds$Week),]
+  sTrades <- sTrans %>% filter(type == "trade") %>% select(type,Week,add,drop)
+  latestAdd <- sAdds[0,]
+  for(sA in nrow(sAdds):1){
+    sAdd <- sAdds[sA,]
+    if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
+  }
+  for(sA in nrow(sTrades):1){
+    sAdd <- sTrades[sA,]
+    if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
+  }
+  latestAdd$player_id <- latestAdd$add
+  latestAdd <- latestAdd %>% mutate(transaction=paste0(type," (Wk ",Week,")"))
+  sKeepers <- left_join(sDrafted,latestAdd[,c("player_id","transaction")], by=c("player_id"))
+  sKeepers <- sKeepers %>% mutate(ACQ=ifelse(!is.na(transaction)&!grepl("trade",transaction),transaction,
+                                             paste("DRAFT: ",round,ifelse(is.na(transaction),"",transaction))
+                                                    ),
+                                  KeeperRound=ifelse(!is.na(transaction)&!grepl("trade",transaction),8,round-1))
+  sKeepers$KeeperRound <- pmax(1,sKeepers$KeeperRound)
+  if(!is.null(ff)){
+    sKeepers <- left_join(sKeepers,ff[,c("pId",colnames(ff)[grepl("adp\\.",colnames(ff))])],by="pId")
+  }
+  if(!is.null(writeFile)) write.csv(sKeepers,file=writeFile)
+  return(sKeepers)
+}
+
 ## ffanalytics Projections ####
-getFFAnalytics_Projections <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
-                                     season = 2020, week = 0, avgType = "robust"){
+getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
+                                       season = 2020, week = 0, avgType = "robust"){
+  if(file.exists(ffDataFile)){
+    if(file.info(ffDataFile)$mtime >= Sys.Date()){
+      load(ffDataFile)
+      return(rawData)
+    }
+  }
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   src <- names(src_weights)#[src_weights > 0]
-  data_result <- scrape_data(src = src, pos = pos, season = season, week = week)
+  rawData <- scrape_data(src = src, pos = pos, season = season, week = week)
+  save(rawData, file = ffDataFile)
+  return(rawData)
+}
+
+getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
+                                     season = 2020, week = 0, avgType = "robust"){
+  if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
   ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
@@ -674,7 +834,7 @@ getManualProjections_Weekly <- function(ff, weeks = 1:16){
   return(ff)
 }
 
-getFFAnalytics_Projections_CSV <- function(fffile, pos = c("QB", "RB", "WR", "TE", "K", "DST"),
+getFFAnalytics_Projections_CSV <- function(fffile, data_result, pos = c("QB", "RB", "WR", "TE", "K", "DST"),
                                        season = 2020, week = 0, avgType = "robust"){
   if(file.exists(fffile)){
     if(file.info(fffile)$mtime >= Sys.Date()){
@@ -682,7 +842,7 @@ getFFAnalytics_Projections_CSV <- function(fffile, pos = c("QB", "RB", "WR", "TE
       return(ff_projections)
     }
   }
-  ff_projections <- getFFAnalytics_Projections(pos = pos, season = season, week = week, avgType = avgType)
+  ff_projections <- getFFAnalytics_Projections(data_result,pos = pos, season = season, week = week, avgType = avgType)
   write.csv(ff_projections,fffile,row.names = FALSE)
   return(ff_projections)
 }
@@ -830,6 +990,7 @@ getTeamRankingDataTable <- function(remote_driver, dataURL){
   return(table)
 }
 
-getDefenseStrength <- function(ff){
-  ffDef <- ff[ff$pos == "DST",]
+getDefenseStrength <- function(rawData){
+  #ffDef <- ff[ff$pos == "DST",]
+  ffDef <- rawData[["DST"]]
 }

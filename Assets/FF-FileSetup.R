@@ -1,11 +1,14 @@
 download_location <- file.path(Sys.getenv("USERPROFILE"), "Downloads")
+rawDataFile <- "Data/FFRawData.RData"
 draftFile <- "Data/FFDraftData.RData"
-#fffile <- paste0(download_location,"/ffa_customrankings2017-3.csv")
-#fffile <- paste0(download_location,"/ffa_customrankings",Year(Sys.Date()),"-0.csv")
 fffile <- paste0("Data/ffa_customrankings",Year(Sys.Date()),"-0.csv")
-ffProjections <- getFFAnalytics_Projections_CSV(fffile)
 
-#469196363834322944 #2019 MXC 469304291434164225 #340916602432159744 #2018 MXC 338482281133907968 #340196925133344768 #340208591887724544
+player_table <- player_table %>% updateTeamNames()
+
+rawData <- getFFAnalytics_RawData(rawDataFile)
+
+ffProjections <- getFFAnalytics_Projections_CSV(fffile,data_result=rawData)
+
 config <- setConfigTxt()
 if(is.null(config)){
   draftId <- leagueId <- MyTeam <- ""

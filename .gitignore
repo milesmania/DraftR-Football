@@ -6,6 +6,7 @@
 .RData
 Data/*.RData
 *config.txt
+Data/Keepers*
 
 # User-specific files
 .Ruserdata
