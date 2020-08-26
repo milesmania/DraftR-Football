@@ -61,12 +61,26 @@ shinyServer(function(input, output, session) {
   
   ## Refresh draft from sleeper ####
   observeEvent(input$RefreshDraft,{
-    values <- refreshCharts(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+    withProgress(message = 'Refreshing Draft', value = 0, {
+      incProgress(0.1,paste('Refreshing Charts ...'))
+      values <- refreshCharts(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      incProgress(0.2,paste('Refreshing Data ...'))
+      values <- refreshDataAvail(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      incProgress(0.4,paste('Refreshing Rosters ...'))
+      values <- refreshRosters(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      incProgress(0.6,paste('Refreshing Rosters ...'))
+      values <- refreshDataForecast(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      incProgress(0.8,paste('Refreshing Projections ...'))
+      values <- refreshProjections(values,output,input,session,ff)
+    })
   })
   
   ##update Projections ####
   observeEvent(input$RefreshLeaguePrj,{
-    values <- refreshProjections(values,output,input,session,ff)
+    withProgress(message = 'Refreshing Projections ', value = 0, {
+      incProgress(0.1,paste('Refreshing League Projections ...'))
+      values <- refreshProjections(values,output,input,session,ff)
+    })
   })
   
   ## Save Settings Button ####

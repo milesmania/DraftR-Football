@@ -10,11 +10,10 @@ shinyUI(
                       sidebarLayout(
                         sidebarPanel(
                           DT::dataTableOutput("dataAvail"),
-                          width = 3),
+                          width = 4),
                         mainPanel(htmlOutput("draftForecasted"),
                                   br(),hr(),br(),
-                                  htmlOutput("dataAvailPrjWk"),
-                                  width = 9)
+                                  htmlOutput("dataAvailPrjWk"))
                       )),
              tabPanel("Roster",
                       checkboxInput("chartShowForecastedRoster", "Show Forecasted Players", TRUE),
