@@ -87,6 +87,14 @@ shinyServer(function(input, output, session) {
     })
   })
   
+  ##update Next Available Forecast ####
+  observeEvent(input$RefreshNextAvail,{
+    withProgress(message = 'Refreshing Projections ', value = 0, {
+      incProgress(0.3,paste('Running Next Available Forecast ...'))
+      ffValues <- refreshDataNextAvailForecast(ffValues,output,input,session,starterPositions,MyTeam)
+    })
+  })
+  
   ## Save Settings Button ####
   observeEvent(input$saveSettings,{
     withProgress(message = 'Saving Settings', value = 0, {

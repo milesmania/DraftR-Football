@@ -64,7 +64,42 @@ refreshCharts <- function(values,output, input, session, ... ){
       roundupGraph(ff,pos="K",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
     },height = 300)
     
-    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
+    
+    ## DataAvail Next Avail Forecast ########################################### 
+    incProgress(0.1,paste('Projecting League Players Available ...'))
+    pAvailable <- values$dataAvail
+    ## Forecast RB's
+      pToForecast <- 1:input$nextAvailRB
+      rbP <- pAvailable %>% filter(pos == "RB")
+      rbAvail <- nextAvailProgress(pToForecast,rbP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailRB = renderText(leagueProjection_Kable(rbAvail))
+    ## Forecast QB's
+      pToForecast <- 1:input$nextAvailQB
+      qbP <- pAvailable %>% filter(pos == "QB")
+      qbAvail <- nextAvailProgress(pToForecast,qbP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailQB = renderText(leagueProjection_Kable(qbAvail))
+    ## Forecast WR's
+      pToForecast <- 1:input$nextAvailWR
+      wrP <- pAvailable %>% filter(pos == "WR")
+      wrAvail <- nextAvailProgress(pToForecast,wrP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailWR = renderText(leagueProjection_Kable(wrAvail))
+    ## Forecast TE's
+      pToForecast <- 1:input$nextAvailTE
+      teP <- pAvailable %>% filter(pos == "TE")
+      teAvail <- nextAvailProgress(pToForecast,teP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailTE = renderText(leagueProjection_Kable(teAvail))
+    ## Forecast DST's
+      pToForecast <- 1:input$nextAvailDST
+      dstP <- pAvailable %>% filter(pos == "DST")
+      dstAvail <- nextAvailProgress(pToForecast,dstP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailDST = renderText(leagueProjection_Kable(dstAvail))
+    ## Forecast K's
+      pToForecast <- 1:input$nextAvailK
+      kP <- pAvailable %>% filter(pos == "K")
+      kAvail <- nextAvailProgress(pToForecast,kP,values$dResult,sTeam=MyTeam, ...)
+      output$dataNextAvailK = renderText(leagueProjection_Kable(kAvail))
+    
+    save(dfDraft,teams,playersAvail,dfAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
     
     #EndProgress Messages
   })
@@ -86,14 +121,52 @@ refreshDataAvail <- function(values,output, input, session, ... ){
   })
   return(values)
 }
-## DataAvail League Projection ########################################### 
+## DataAvail Next Avail Forecast ########################################### 
+refreshDataNextAvailForecast <- function(values,output, input, session, ... ){
+  withProgress(message = 'Refreshing Data Available', value = 0, {
+    incProgress(0.1,paste('Projecting League Players Available ...'))
+    pAvailable <- values$dataAvail
+    ## Forecast RB's
+    pToForecast <- 1:input$nextAvailRB
+    rbP <- pAvailable %>% filter(pos == "RB")
+    rbAvail <- nextAvailProgress(pToForecast,rbP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailRB = renderText(leagueProjection_Kable(rbAvail))
+    ## Forecast QB's
+    pToForecast <- 1:input$nextAvailQB
+    qbP <- pAvailable %>% filter(pos == "QB")
+    qbAvail <- nextAvailProgress(pToForecast,qbP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailQB = renderText(leagueProjection_Kable(qbAvail))
+    ## Forecast WR's
+    pToForecast <- 1:input$nextAvailWR
+    wrP <- pAvailable %>% filter(pos == "WR")
+    wrAvail <- nextAvailProgress(pToForecast,wrP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailWR = renderText(leagueProjection_Kable(wrAvail))
+    ## Forecast TE's
+    pToForecast <- 1:input$nextAvailTE
+    teP <- pAvailable %>% filter(pos == "TE")
+    teAvail <- nextAvailProgress(pToForecast,teP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailTE = renderText(leagueProjection_Kable(teAvail))
+    ## Forecast DST's
+    pToForecast <- 1:input$nextAvailDST
+    dstP <- pAvailable %>% filter(pos == "DST")
+    dstAvail <- nextAvailProgress(pToForecast,dstP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailDST = renderText(leagueProjection_Kable(dstAvail))
+    ## Forecast K's
+    pToForecast <- 1:input$nextAvailK
+    kP <- pAvailable %>% filter(pos == "K")
+    kAvail <- nextAvailProgress(pToForecast,kP,values$dResult,sTeam=MyTeam, ...)
+    output$dataNextAvailK = renderText(leagueProjection_Kable(kAvail))
+    #EndProgress Messages
+  })
+  return(values)
+}
+## DataAvail League Projection  ###########################################
 refreshDataLeagueProjection <- function(values,output, input, session, ... ){
   withProgress(message = 'Refreshing Data Available', value = 0, {
     incProgress(0.3,paste('Projecting League Players Available ...'))
     dfAvail <- values$dataAvail
-    output$dataAvailPrjWk = renderText(leagueProjectionplayersAvailKable(
-      leagueProjectionplayersAvail(dfAvail,allPlayers)))
-    
+    dPrjAvail <- leagueProjectionplayersAvail(dfAvail)
+    output$dataAvailPrjWk = renderText(leagueProjectionplayersAvailKable(dPrjAvail))
     #EndProgress Messages
   })
   return(values)

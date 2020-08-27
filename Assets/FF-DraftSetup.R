@@ -13,6 +13,8 @@ if(file.exists(draftFile)){
     #ff$pId <- factor(ff$pId,levels=playerLevels)
     playersTaken <- character()
     
+    dfAvail <- ff
+    
     dfDraft <- data.frame(matrix("",length(availPlayers),length(teams)), stringsAsFactors = F) #data.frame(matrix(availPlayers,length(availPlayers),length(teams)))
     colnames(dfDraft) <- teams
     
@@ -43,6 +45,6 @@ if(file.exists(draftFile)){
     # if(draftResults[96,]$Team == "Miles") draftResults[96,]$Team <- "Nate"
     # if(draftResults[59,]$Team == "Nate") draftResults[59,]$Team <- "Miles"
     
-    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile) 
+    save(dfDraft,teams,playersAvail,dfAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile) 
   }
 }

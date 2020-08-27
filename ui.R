@@ -15,6 +15,22 @@ shinyUI(
                           width = 3),
                         mainPanel(htmlOutput("draftForecasted"),
                                   br(),hr(),br(),
+                                  fluidRow(column(4,h3("Projected Weekly Scores")),
+                                           column(2,actionButton("RefreshNextAvail", "Project Picks"))
+                                           ),
+                                  fluidRow(column(2,sliderInput("nextAvailQB","Forecast QB",min=1,max=10,value=5)),
+                                           column(2,sliderInput("nextAvailRB","Forecast RB",min=1,max=20,value=5)),
+                                           column(2,sliderInput("nextAvailWR","Forecast WR",min=1,max=20,value=5)),
+                                           column(2,sliderInput("nextAvailTE","Forecast TE",min=1,max=10,value=5)),
+                                           column(2,sliderInput("nextAvailDST","Forecast DST",min=1,max=10,value=2)),
+                                           column(2,sliderInput("nextAvailK","Forecast K",min=1,max=10,value=2))
+                                  ),
+                                  htmlOutput("dataNextAvailQB"),
+                                  htmlOutput("dataNextAvailRB"),
+                                  htmlOutput("dataNextAvailWR"),
+                                  htmlOutput("dataNextAvailTE"),
+                                  htmlOutput("dataNextAvailDST"),
+                                  htmlOutput("dataNextAvailK"),
                                   htmlOutput("dataAvailPrjWk"))
                       )),
              tabPanel("Roster",

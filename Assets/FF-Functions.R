@@ -137,6 +137,41 @@ forecastDraft <- function(draftResults,ff){
   dForcast <- dForcast[order(dForcast$Overall),]
   return(dForcast)
 }
+#sTeam <- MyTeam; pAvail <- head(dfAvail,10)
+nextAvailForecast <- function(draftResults,pAvail,sTeam, ...){
+  nextPick <- head(draftResults %>% filter(Team == sTeam & Pick == ""),1)
+  nextAvail <- NULL
+  for(pI in 1:nrow(pAvail)){#pI=2
+    tF <- draftResults
+    tF[tF$Overall==nextPick$Overall & tF$Round==nextPick$Round, 'Pick'] <- pAvail[pI,'pId']
+    testForecast <- forecastDraft(tF,ff) %>% filter(Team == sTeam)
+    tLprj <- leagueProjection(ff,testForecast,starterPositions)
+    tLprjTable <- leagueProjection_Table(tLprj)
+    tLprjTeam <- tLprjTable %>% filter(Team == sTeam) %>% rename_at(vars("Team"),funs(c("Pick")))
+    tLprjTeam$Pick <- pAvail[pI,'pId']
+    if(is.null(nextAvail)){
+      nextAvail <- tLprjTeam
+    }else{
+      nextAvail <- rbind(nextAvail,tLprjTeam)
+    }
+  }
+  nextAvail <- nextAvail %>% arrange(desc(Regular))
+  return(nextAvail)
+}
+
+nextAvailProgress <- function(pToForecast,pAvailable,draftResults,pAvail,sTeam, ...){
+  nextAvail <- NULL
+  for(pA in pToForecast){
+    pAvail <- pAvailable[pA,]
+    incProgress(pA/max(pToForecast),paste('Projecting',pAvail$pId,'...'))
+    nextAvailable <- nextAvailForecast(draftResults,pAvail,sTeam, ...)
+    if(is.null(nextAvail)){ nextAvail <- nextAvailable 
+    }else{
+      nextAvail <- rbind(nextAvail,nextAvailable)
+    }
+  }
+  return(nextAvail)
+}
 
 draftTablePopulate <- function(dfDraft,draftForecast){
   dTable <- dfDraft
@@ -465,7 +500,7 @@ leagueProjection_Table <- function(lPrj){
   lPrj3 <- lPrj2 %>% tidyr::spread(Wk,Pts)
   lPrj3$Regular <- sapply(1:nrow(lPrj3), function(x) round(sum(lPrj3[x,2:15], na.rm=T)/14,2))
   lPrj3$Playoff <- sapply(1:nrow(lPrj3), function(x) round(sum(lPrj3[x,16:17], na.rm=T)/2,2))
-  lPrj3 <- as.data.frame(lPrj3)
+  lPrj3 <- as.data.frame(lPrj3) %>% arrange(desc(Regular))
   return(lPrj3)
 }
 
@@ -531,15 +566,15 @@ leagueProjection_WeekKable <- function(lWk2){
   return(lWk2k)
 }
 
-#dfAvail <- ff; dataAvail = dfAvail[!(dfAvail$pId %in% playersTaken),]
-#dPrj <- leagueProjectionplayersAvail(dataAvail,allPlayers)
-leagueProjectionplayersAvail <- function(dataAvail,allPlayers){
-  aPlayers <- allPlayers[,c("pId",colnames(allPlayers)[grep("Wk",colnames(allPlayers))])]
+#dataAvail <- ff; dataAvail = dfAvail[!(dfAvail$pId %in% playersTaken),]
+#dPrj <- leagueProjectionplayersAvail(ff,allPlayers)
+leagueProjectionplayersAvail <- function(dataAvail, ... ){
+  aPlayers <- dataAvail[,c("pId",colnames(dataAvail)[grep("Wk",colnames(dataAvail))])]
   colnames(aPlayers)[grep("Wk",colnames(aPlayers))] <- gsub("Pts","",colnames(aPlayers)[grep("Wk",colnames(aPlayers))])
-  dAvail <- dataAvail[,c("pId","team","pos","age","bye","points","vor")]
-  dPrj <- merge(dAvail,aPlayers,all.x=TRUE, sort=FALSE)
-  dPrj$points <- round(dPrj$points,1)
-  dPrj$vor <- round(dPrj$vor,1)
+  aPlayers <- aPlayers %>% mutate(ptswk = rowSums(.[2:ncol(aPlayers)])) %>% relocate(ptswk, .before = Wk01)
+  dPlayers <- dataAvail[,c("pId","team","pos","age","bye","points","vor")]
+  dPrj <- merge(dPlayers,aPlayers,all.x=TRUE, sort=FALSE)
+  dPrj[,grepl("points|vor|Wk|pts",colnames(dPrj))] <- round(dPrj[,grepl("points|vor|Wk|pts",colnames(dPrj))],1)
   
   nflSched <- getNFLSchedule()
   
@@ -1131,6 +1166,7 @@ updateMissingIds <- function(ff, allPlayers){
     for(aX in 1:length(allPlayerIds)){
       ff[ff$pId == names(allPlayerIds)[aX],'pId'] <- allPlayerIds[aX]
     }
+    print("Updating Missing Player Ids:")
     print(allPlayerIds)
   }
   return(ff)
