@@ -6,7 +6,7 @@ refreshCharts <- function(values,output, input, session, ... ){
     incProgress(0.1,paste('Refreshing Draft from Sleeper ...'))
     draftResults <- draftPopulateResults(dfDraft,draftResults)
     values$dResult <- draftResults 
-    picksToUpdate <- updateDraftFromSleeper(draftId,draftResults)
+    picksToUpdate <- updateDraftFromSleeper(draftId,draftResults,allPlayers)
     
     setProgress(0.2,paste('Populating Draft from Sleeper ...'))
     dfDraft <- values$data
@@ -33,15 +33,39 @@ refreshCharts <- function(values,output, input, session, ... ){
     dfAvail <- dfAvail[!(dfAvail$pId %in% playersTaken),]
     values$dataAvail <- dfAvail
     
+    ffDataAvailable <- ffDataAvail(values$dataAvail,values$dForecast)
+    output$dataAvail = DT::renderDataTable({
+      ffDataAvailable
+    })
     
     setProgress(0.4,paste('Forecasting Draft ...'))
     values$dResult <- draftResults 
     draftForecast <- forecastDraft(draftResults,ff)
     values$dForecast <- draftForecast
     
-    output$draftForecasted = renderText(
-      draftTablePopulate(dfDraft, draftForecast)
-    )
+    setProgress(0.6,paste('Updating Available Charts ...'))
+    ## Available Chart graphing ####
+    output$rbChart <- renderPlot({
+      roundupGraph(ff,pos="RB",nPlayers=100,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 1000)
+    output$wrChart <- renderPlot({
+      roundupGraph(ff,pos="WR",nPlayers=100,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 1000)
+    output$qbChart <- renderPlot({
+      roundupGraph(ff,pos="QB",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 300)
+    output$teChart <- renderPlot({
+      roundupGraph(ff,pos="TE",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 300)
+    output$dstChart <- renderPlot({
+      roundupGraph(ff,pos="DST",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 300)
+    output$kChart <- renderPlot({
+      roundupGraph(ff,pos="K",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
+    },height = 300)
+    
+    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
+    
     #EndProgress Messages
   })
   return(values)
@@ -50,31 +74,23 @@ refreshCharts <- function(values,output, input, session, ... ){
 refreshDataAvail <- function(values,output, input, session, ... ){
   withProgress(message = 'Refreshing Data Available', value = 0, {
     incProgress(0.1,paste('Rendering Data Available Tables ...'))
-    dfAvail <- values$dataAvail
-    output$dataAvail = DT::renderDataTable({
-      dtF <- datatable(dfAvail[,c('name','pos','team','age')], 
-                       options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
-        formatStyle("pos",target = 'row',
-                    backgroundColor = styleEqual(levels=c("QB","RB","WR","TE","DST","K"),
-                                                 values=c("pink","lightgreen","lightblue","orange","violet","lightgrey")))
-      
-      if("Team" %in% names(draftForecast)){
-        myPlayers <- subset(draftForecast,Team==MyTeam & Selected=="forecast","name",drop=T)
-        dtF <- dtF %>% 
-          formatStyle(columns = "name", border = styleEqual(levels=myPlayers, values=rep('3px dashed red',length(myPlayers))))
-      }
-      dtF
-    })
-    
     output$dataAvailALL = DT::renderDataTable({
-      datatable(dfAvail, options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
+      datatable(values$dataAvail, options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
         formatStyle("pos",target = 'row',
                     backgroundColor = styleEqual(levels=c("QB","RB","WR","TE","DST","K"),
                                                  values=c("pink","lightgreen","lightblue","orange","violet","lightgrey"))) %>%
         formatRound(columns = colnames(values$dataAvail)[8:35])
     })
     
-    setProgress(0.5,paste('Projecting League Players Available ...'))
+    #EndProgress Messages
+  })
+  return(values)
+}
+## DataAvail League Projection ########################################### 
+refreshDataLeagueProjection <- function(values,output, input, session, ... ){
+  withProgress(message = 'Refreshing Data Available', value = 0, {
+    incProgress(0.3,paste('Projecting League Players Available ...'))
+    dfAvail <- values$dataAvail
     output$dataAvailPrjWk = renderText(leagueProjectionplayersAvailKable(
       leagueProjectionplayersAvail(dfAvail,allPlayers)))
     
@@ -86,6 +102,8 @@ refreshDataAvail <- function(values,output, input, session, ... ){
 refreshRosters <- function(values,output, input, session, ... ){
   withProgress(message = 'Refreshing Draft Rosters', value = 0, {
     incProgress(0.1,paste('Updating Rosters ...'))
+    draftForecast <- values$dForecast
+    draftResults <- values$dResult
     rosters <- setRoster(draftForecast,showForecast=input$chartShowForecastedRoster)
     values$rosterData <- rosters
     
@@ -125,8 +143,9 @@ refreshRosters <- function(values,output, input, session, ... ){
     ## DataForcastALL ########################################### 
 refreshDataForecast <- function(values,output, input, session, ... ){
       withProgress(message = 'Refreshing Data Available', value = 0, {
-        incProgress(0.1,paste('Rendering Data Available Tables ...'))
+        incProgress(0.1,paste('Rendering Data Forecast Tables ...'))
     output$dataForcastALL = DT::renderDataTable({
+      draftForecast <- values$dForecast
       dFall <- draftForecast #values$dForecast
       dFall <- dFall[dFall$Selected == "forecast",c("Overall","Round","Team","Pick","pos","ForcastComment","points","lower","upper","vor")]
       datatable(dFall, options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
@@ -135,28 +154,6 @@ refreshDataForecast <- function(values,output, input, session, ... ){
                                                  values=c("pink","lightgreen","lightblue","orange","violet","lightgrey"))) %>%
         formatRound(columns = colnames(dFall)[7:ncol(dFall)])
     })
-    setProgress(0.6,paste('Updating Available Charts ...'))
-    ## Available Chart graphing ####
-    output$rbChart <- renderPlot({
-      roundupGraph(ff,pos="RB",nPlayers=100,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 1000)
-    output$wrChart <- renderPlot({
-      roundupGraph(ff,pos="WR",nPlayers=100,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 1000)
-    output$qbChart <- renderPlot({
-      roundupGraph(ff,pos="QB",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 300)
-    output$teChart <- renderPlot({
-      roundupGraph(ff,pos="TE",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 300)
-    output$dstChart <- renderPlot({
-      roundupGraph(ff,pos="DST",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 300)
-    output$kChart <- renderPlot({
-      roundupGraph(ff,pos="K",nPlayers=30,playersTaken = playersTaken, xVal = values$availChartX, yVal = values$availChartY, showTaken=input$chartShowTaken)
-    },height = 300)
-    
-    save(dfDraft,teams,playersAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile)
     
     #EndProgress Messages
   })

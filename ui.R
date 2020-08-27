@@ -4,13 +4,15 @@ library(plotly)
 shinyUI(
   navbarPage("Dynasty Maker!!  (BETA)", id = "tabs",
              tabPanel("Draft",
-                      actionButton("RefreshDraft", "Refresh From Sleeper"),
-                      htmlOutput("nextPick"),
-                      p(textOutput("pickTimeElapsed")),
+                      fluidRow(
+                        column(2,actionButton("RefreshDraft", "Refresh From Sleeper")),
+                        column(6,htmlOutput("nextPick")),
+                        column(4,p(textOutput("pickTimeElapsed"))),
+                      ),
                       sidebarLayout(
                         sidebarPanel(
                           DT::dataTableOutput("dataAvail"),
-                          width = 4),
+                          width = 3),
                         mainPanel(htmlOutput("draftForecasted"),
                                   br(),hr(),br(),
                                   htmlOutput("dataAvailPrjWk"))

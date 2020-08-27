@@ -3,14 +3,14 @@ shinyServer(function(input, output, session) {
   
   ## Reactives ###########################################
   
-  values = reactiveValues(data = dfDraft, 
+  ffValues = reactiveValues(data = dfDraft, 
                           pAvail = playersAvail,
                           pTaken = playersTaken,
                           pTakenCount = playersTakenCount,
                           dataAvail = ff,
                           rosterData = rosters,
                           dResult = draftResults,
-                          fResult = draftForecast,
+                          dForecast = draftForecast,
                           lPrj = seasonProjection,
                           availChartX = availChartX,
                           availChartY = availChartY,
@@ -23,55 +23,57 @@ shinyServer(function(input, output, session) {
     #set up autocomplete on drafting table
     # req(input$data)
     # dfDraft <- hot_to_r(input$data)
-    # values$data <- dfDraft
+    # ffValues$data <- dfDraft
     
     #Get playerTaken and players available
     playersTaken <- as.character(unlist(as.list(dfDraft)))
     playersTaken <- playersTaken[playersTaken != ""]
-    if(length(playersTaken) != values$pTakenCount){
-      values$StartPickTime <- Sys.time()# + 4*60
+    if(length(playersTaken) != ffValues$pTakenCount){
+      ffValues$StartPickTime <- Sys.time()# + 4*60
       playersTakenCount <- length(playersTaken)
-      values$pTakenCount <- playersTakenCount
+      ffValues$pTakenCount <- playersTakenCount
     }
     playersAvail <- as.character(unique(ff$pId))
     playersAvail <- playersAvail[!(playersAvail %in% playersTaken)]
-    values$pAvail <- playersAvail
-    values$pTaken <- playersTaken
+    ffValues$pAvail <- playersAvail
+    ffValues$pTaken <- playersTaken
     
     dfAvail <- ff
-    values$dataAvail = dfAvail[!(dfAvail$pId %in% playersTaken),]
+    ffValues$dataAvail = dfAvail[!(dfAvail$pId %in% playersTaken),]
     
     #update draft results
-    draftResults <- draftPopulateResults(dfDraft,draftResults)
+    draftResults <- draftPopulateResults(ffValues$data,draftResults)
     
-    values$dResult <- draftResults 
-    values$dForecast <- forecastDraft(draftResults,ff)
-    draftForecast <- values$dForecast
-    seasonProjection <- values$lPrj
+    ffValues$dResult <- draftResults 
+    ffValues$dForecast <- forecastDraft(draftResults,ff)
+    draftForecast <- ffValues$dForecast
+    seasonProjection <- ffValues$lPrj
     
     rosters <- setRoster(draftForecast,showForecast=input$chartShowForecastedRoster)
-    values$rosterData <- rosters
-    values$availChartY <- input$chartY
-    values$availChartX <- input$chartX
+    ffValues$rosterData <- rosters
+    ffValues$availChartY <- input$chartY
+    ffValues$availChartX <- input$chartX
     
     if(draftId == "" | leagueId == ""){
       tabShowHide(tabId="tabs",hideIt = TRUE)
     }
+    
+    output$draftForecasted = renderText(
+      draftTablePopulate(ffValues$data, ffValues$dForecast)
+    )
   })
   
   ## Refresh draft from sleeper ####
   observeEvent(input$RefreshDraft,{
     withProgress(message = 'Refreshing Draft', value = 0, {
       incProgress(0.1,paste('Refreshing Charts ...'))
-      values <- refreshCharts(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      ffValues <- refreshCharts(ffValues,output,input,session,dfDraft,draftResults,draftId,ff,draftFile,allPlayers)
       incProgress(0.2,paste('Refreshing Data ...'))
-      values <- refreshDataAvail(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      ffValues <- refreshDataAvail(ffValues,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
       incProgress(0.4,paste('Refreshing Rosters ...'))
-      values <- refreshRosters(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
-      incProgress(0.6,paste('Refreshing Rosters ...'))
-      values <- refreshDataForecast(values,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
-      incProgress(0.8,paste('Refreshing Projections ...'))
-      values <- refreshProjections(values,output,input,session,ff)
+      ffValues <- refreshRosters(ffValues,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
+      incProgress(0.6,paste('Refreshing Forecast ...'))
+      ffValues <- refreshDataForecast(ffValues,output,input,session,dfDraft,draftResults,draftId,ff,draftFile)
     })
   })
   
@@ -79,7 +81,9 @@ shinyServer(function(input, output, session) {
   observeEvent(input$RefreshLeaguePrj,{
     withProgress(message = 'Refreshing Projections ', value = 0, {
       incProgress(0.1,paste('Refreshing League Projections ...'))
-      values <- refreshProjections(values,output,input,session,ff)
+      ffValues <- refreshProjections(ffValues,output,input,session,ff)
+      incProgress(0.3,paste('Refreshing League Projection ...'))
+      ffValues <- refreshDataLeagueProjection(ffValues,output,input,session,allPlayers)
     })
   })
   
@@ -111,8 +115,8 @@ shinyServer(function(input, output, session) {
   
   ## Output updates ########################################### 
   # output$draftData = DT::renderDataTable({
-  #   datatable(values$dForecast, options = list(lengthMenu = c(100, 50, 25, 10),
-  #                                            columnDefs = list(list(visible = FALSE, targets = 5:ncol(values$dForecast))), 
+  #   datatable(ffValues$dForecast, options = list(lengthMenu = c(100, 50, 25, 10),
+  #                                            columnDefs = list(list(visible = FALSE, targets = 5:ncol(ffValues$dForecast))), 
   #                                            pageLength = 50)) %>%
   #     formatStyle(valueColumns="Selected",target = 'cell',columns = "Pick",color = styleEqual(levels="forecast",values="lightblue"))
   # })
