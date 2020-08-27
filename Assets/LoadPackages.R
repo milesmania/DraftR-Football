@@ -13,6 +13,7 @@ library(ggthemes)
 library(RSelenium)
 
 library(kableExtra)
+#library(stringdist)
 
 if(!("ffanalytics" %in% installed.packages())){
   devtools::install_github("FantasyFootballAnalytics/ffanalytics")

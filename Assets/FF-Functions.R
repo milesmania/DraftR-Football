@@ -140,7 +140,7 @@ forecastDraft <- function(draftResults,ff){
 
 draftTablePopulate <- function(dfDraft,draftForecast){
   dTable <- dfDraft
-  dFCast <- draftForecast
+  dFCast <- draftForecast %>% select(Overall,Round,Team,Pick,team,pos,Selected,ForcastComment) %>% unique()
   
   dComments <- matrix(data=NA,nrow=nrow(dTable),ncol=ncol(dTable))
   for(j in 1:ncol(dTable)){ #j=1
@@ -152,7 +152,7 @@ draftTablePopulate <- function(dfDraft,draftForecast){
                                                          "TE"="orange","DST"="violet","K"="white","white")
     })
     dTable[,j] <- dTable[,j] %>% text_spec(format="html", background = dPosColor, #ifelse(dRowFcast,"white",dPosColor),
-                                           angle = ifelse(dRowFcast,5,0), 
+                                           angle = ifelse(dRowFcast,10,0), 
                                            #color = ifelse(dRowFcast,dPosColor,"black"), 
                                            bold = !dRowFcast,
                                            font_size = ifelse(dRowFcast,"x-small","small")
@@ -163,8 +163,8 @@ draftTablePopulate <- function(dfDraft,draftForecast){
     dComments[dFCast[dFCast$Team==colnames(dTable)[j],"Selected"]=="forecast",j] <- "Forecast"
   }
   
-  dTable <- kable(dTable,"html", escape = F, row.names = T) %>% kable_styling("striped", full_width = T)
-  return(dTable)
+  dTableKable <- kable(dTable,"html", escape = F, row.names = T) %>% kable_styling("striped", full_width = T)
+  return(dTableKable)
 }
 
 draftChart <- function(dForcast){
@@ -241,17 +241,36 @@ setConfigTxt <- function(configFile="Assets/config.txt"){
   return(config)
 }
 
+ffDataAvail <- function(dataAvail,dForecast){
+  dtF <- datatable(dataAvail[,c('name','pos','team','bye','age')], 
+                   options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
+    formatStyle("pos",target = 'row',
+                backgroundColor = styleEqual(levels=c("QB","RB","WR","TE","DST","K"),
+                                             values=c("pink","lightgreen","lightblue","orange","violet","lightgrey")))
+  
+  if("Team" %in% names(dForecast)){
+    myPlayers <- subset(dForecast,Team==MyTeam & Selected=="forecast","name",drop=T)
+    dtF <- dtF %>% 
+      formatStyle(columns = "name", border = styleEqual(levels=myPlayers, values=rep('3px dashed red',length(myPlayers))))
+  }
+  return(dtF)
+}
+
 ## Sleeper Draft ####
 #picksToUpdate <- updateDraftFromSleeper(draftId,draftResults)
 #dfDraft <- draftPopulate(picksToUpdate,dfDraft)
-updateDraftFromSleeper <- function(draftId,draftResults){#draftId=469304291434164225
-  dPlayers <- getDraftFromSleeper(draftId)
+updateDraftFromSleeper <- function(draftId,draftResults,allPlayers){#draftId=469304291434164225
+  dPlayers <- getDraftFromSleeper(draftId, allPlayers)
   if(nrow(dPlayers) > 0){
     dPlayers$pId <- sapply(1:nrow(dPlayers), function(x){
-      if(dPlayers[x,'position'] == "DEF"){
-        paste(dPlayers[x,'last_name'], dPlayers[x,'team'], "DST", sep="|")
+      if(!is.na(dPlayers[x,'pId'])){
+        dPlayers[x,'pId']
       }else{
-        paste(dPlayers[x,'name'], dPlayers[x,'team'], dPlayers[x,'position'], sep="|")
+        if(dPlayers[x,'position'] == "DEF"){
+          paste(dPlayers[x,'last_name'], dPlayers[x,'team'], "DST", sep="|")
+        }else{
+          paste(dPlayers[x,'name'], dPlayers[x,'team'], dPlayers[x,'position'], sep="|")
+        }
       }
     })
     unpicked <- draftResults[draftResults$Pick=="","Overall"]
@@ -314,19 +333,30 @@ updatePlayersFromSleeper <- function(pFileName=gsub("Draft","Player",draftFile),
 
 #allPlayers <- correctSleeperNames(allPlayers)
 correctSleeperNames <- function(sPlayers){
-  sPlayers[sPlayers$player_id == 1408,"name"] <- "LeVeon Bell"
-  #sPlayers[sPlayers$team == "JAX","team"] <- "JAC"
-  sPlayers[sPlayers$name == "Juju Smith-Schuster","name"] <- "JuJu Smith-Schuster"
-  sPlayers[sPlayers$name == "Odell Beckham Jr","name"] <- "Odell Beckham"
-  sPlayers[sPlayers$name == "Devante Parker","name"] <- "DeVante Parker"
-  sPlayers[sPlayers$name == "CJ Anderson","name"] <- "C.J. Anderson"
-  sPlayers[sPlayers$name == "OJ Howard","name"] <- "O.J. Howard"
-  sPlayers[sPlayers$name == "AJ Green","name"] <- "A.J. Green"
-  sPlayers[sPlayers$name == "Mitch Trubisky","name"] <- "Mitchell Trubisky"
-  sPlayers[sPlayers$name == "Chris Herndon IV","name"] <- "Chris Herndon"
-  sPlayers[sPlayers$player_id == 5230,"name"] <- "Mike Badgley"
-  sPlayers[sPlayers$player_id == 3451,"name"] <- "Kaimi Fairbairn"
-  sPlayers[sPlayers$player_id == 5052,"name"] <- "Ronald Jones"
+  #sPlayers <- allPlayers
+  # sPlayers[sPlayers$player_id == 1408,"name"] <- "LeVeon Bell"
+  # sPlayers[sPlayers$team == "JAX","team"] <- "JAC"
+  # sPlayers[sPlayers$name == "Juju Smith-Schuster","name"] <- "JuJu Smith-Schuster"
+  sPlayers[grepl(" Jr\\.$",sPlayers$name),"name"] <- gsub(" Jr\\.$","",sPlayers[grepl(" Jr\\.$",sPlayers$name),"name"])
+  sPlayers[grepl(" Jr$",sPlayers$name),"name"] <- gsub(" Jr$","",sPlayers[grepl(" Jr$",sPlayers$name),"name"])
+  sPlayers[grepl(" II$",sPlayers$name),"name"] <- gsub(" II$","",sPlayers[grepl(" II$",sPlayers$name),"name"])
+  sPlayers[grepl(" III$",sPlayers$name),"name"] <- gsub(" III$","",sPlayers[grepl(" III$",sPlayers$name),"name"])
+  sPlayers[grepl("^DEF$",sPlayers$position),"position"] <- "DST"
+  sPlayers[grepl("^FB$",sPlayers$position),"position"] <- "RB"
+  # sPlayers[sPlayers$name == "Odell Beckham Jr","name"] <- "Odell Beckham"
+  # sPlayers[sPlayers$name == "Mark Ingram II","name"] <- "Mark Ingram"
+  # sPlayers[sPlayers$name == "Todd Gurley II","name"] <- "Todd Gurley"
+  # sPlayers[sPlayers$name == "Melvin Gordon III","name"] <- "Melvin Gordon"
+  # sPlayers[sPlayers$name == "Devante Parker","name"] <- "DeVante Parker"
+  sPlayers[sPlayers$name == "D.J. Chark","name"] <- "DJ Chark"
+  # sPlayers[sPlayers$name == "CJ Anderson","name"] <- "C.J. Anderson"
+  # sPlayers[sPlayers$name == "OJ Howard","name"] <- "O.J. Howard"
+  # sPlayers[sPlayers$name == "AJ Green","name"] <- "A.J. Green"
+  # sPlayers[sPlayers$name == "Mitch Trubisky","name"] <- "Mitchell Trubisky"
+  # sPlayers[sPlayers$name == "Chris Herndon IV","name"] <- "Chris Herndon"
+  # sPlayers[sPlayers$player_id == 5230,"name"] <- "Mike Badgley"
+  # sPlayers[sPlayers$player_id == 3451,"name"] <- "Kaimi Fairbairn"
+  # sPlayers[sPlayers$player_id == 5052,"name"] <- "Ronald Jones"
   return(sPlayers)
 }
 
@@ -539,19 +569,27 @@ leagueProjectionplayersAvailKable <- function(dPrj,pRrows=25){
 }
 
 ## Sleeper API Functions ####
-getDraftFromSleeper <- function(draftId){
+getDraftFromSleeper <- function(draftId,allPlayers=NULL){
   dPlayers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId,"/picks"), flatten = TRUE)
   if(is.null(dPlayers) || length(dPlayers)==0) return(data.frame('round'=integer(),'draft_slot'=integer(),'pId'=character(),stringsAsFactors = F))
-  
+  colnames(dPlayers)[colnames(dPlayers) == "metadata.player_id"] <- "metadata.sleeper_id"
   colnames(dPlayers)[grep("metadata",colnames(dPlayers))] <- gsub("metadata.","",colnames(dPlayers)[grep("metadata",colnames(dPlayers))])
   dPlayers$name <- paste(dPlayers$first_name,dPlayers$last_name)#x=1
   dPlayers <- correctSleeperNames(dPlayers)
+  
   if(nrow(dPlayers) > 0){
+    if(!is.null(allPlayers)){
+      dPlayers <- dPlayers %>% left_join(allPlayers[,c("player_id","pId")], by = c("player_id" = "player_id"))
+    }
     dPlayers$pId <- sapply(1:nrow(dPlayers), function(x){
-      if(dPlayers[x,'position'] == "DEF"){
-        paste(dPlayers[x,'last_name'], dPlayers[x,'team'], "DST", sep="|")
+      if(!is.na(dPlayers[x,'pId'])){
+        dPlayers[x,'pId']
       }else{
-        paste(dPlayers[x,'name'], dPlayers[x,'team'], dPlayers[x,'position'], sep="|")
+        if(dPlayers[x,'position'] == "DEF"){
+          paste(dPlayers[x,'last_name'], dPlayers[x,'team'], "DST", sep="|")
+        }else{
+          paste(dPlayers[x,'name'], dPlayers[x,'team'], dPlayers[x,'position'], sep="|")
+        }
       }
     })
   }
@@ -739,11 +777,11 @@ getLeagueTransFromSleeper <- function(leagueId, wks = 0:20){#leagueIds<-unique(s
   return(sTrans)
 }
 
-#sKeepers <- getKeeperDraftRound(leagueId = "469304291434164224",ff,writeFile="Data/Keepers.csv")
-getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL){
+#sKeepers <- getKeeperDraftRound(leagueId = "469304291434164224",ff,writeFile="Data/Keepers.csv", allPlayers=allPlayers)
+getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL, allPlayers = NULL){
   #leagueId <- "469304291434164224"
   if(is.null(draftId)) draftId <- getLeagueDraftsFromSleeper(leagueId)$draft_id
-  sDraft <- getDraftFromSleeper(draftId)
+  sDraft <- getDraftFromSleeper(draftId, allPlayers)
   sRoster <- getRostersFromSleeper(leagueId)
   sTrans <- getLeagueTransFromSleeper(leagueId)
   sPlayers <- updatePlayersFromSleeper()
@@ -770,7 +808,7 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
                                   KeeperRound=ifelse(!is.na(transaction)&!grepl("trade",transaction),8,round-1))
   sKeepers$KeeperRound <- pmax(1,sKeepers$KeeperRound)
   if(!is.null(ff)){
-    sKeepers <- left_join(sKeepers,ff[,c("pId",colnames(ff)[grepl("adp\\.",colnames(ff))])],by="pId")
+    sKeepers <- left_join(sKeepers,ff[,c("pId",colnames(ff)[grepl("adp",colnames(ff))])],by="pId")
   }
   if(!is.null(writeFile)) write.csv(sKeepers,file=writeFile)
   return(sKeepers)
@@ -786,7 +824,7 @@ getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K
     }
   }
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
-  src <- names(src_weights)#[src_weights > 0]
+  src <- names(src_weights)[src_weights > 0]
   rawData <- scrape_data(src = src, pos = pos, season = season, week = week)
   save(rawData, file = ffDataFile)
   return(rawData)
@@ -799,11 +837,12 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
   tier_thresholds <- getFFAnalytics_TierThreshold()
   ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
                                       tier_thresholds = tier_thresholds)
-  ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type)
-  ff_projections <- ff_projections %>% add_ecr() %>% add_risk() %>%
-    add_adpaav_override(type="ADP") %>% 
-    add_adpaav_override(type="AAV")
-  ff_projections <- ff_projections %>% add_player_info()
+  ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
+  ff_projections <- ff_projections %>% add_ecr_override() %>% #add_ecr() %>% 
+    add_risk() %>%
+    add_adp() %>% #add_adpaav_override(type="ADP") %>% 
+    add_aav() #add_adpaav_override(type="AAV")
+  ff_projections <- ff_projections %>% add_player_info_override()
   ff_projections <- ff_projections %>% add_player_bye()
   ff_projections <- ff_projections %>% mutate(name = paste(first_name,last_name))
   if("rank" %in% colnames(ff_projections))
@@ -830,6 +869,31 @@ getManualProjections_Weekly <- function(ff, weeks = 1:16){
     pCol <- paste0("PtsWk",formatC(wk, width=2, flag="0"))
     ff[,pCol] <- 0
     ff[ff$bye != wk,pCol] <- ff[ff$bye != wk, "points"]/16
+  }
+  return(ff)
+}
+
+getManualProjections_Strength <- function(ff, weeks = 1:16){
+  nflSched <- getNFLSchedule()
+  ffOff <- getStrengthOffense(ff)
+  ffDef <- getStrengthDefense(ff)
+  for(wk in weeks){#wk=1
+    wkL <- paste0("Wk",formatC(wk, width=2, flag="0"))
+    pCol <- paste0("Pts",wkL)
+    ff[,pCol] <- 0
+    ffNoBye <- which(ff$bye != wk)
+    ff[ffNoBye,pCol] <- sapply(1:length(ffNoBye),function(x){#x=1
+      fTeam <- ff[x,'team']
+      fPos <- ff[x,'pos']
+      isDef <- grepl("DST",fPos)
+      oTeam <- nflSched[nflSched$TEAM==fTeam,wkL]
+      fHome <- grepl("\\@",oTeam)
+      oTeam <- gsub("\\@","",oTeam)
+      fOff <- ffOff[ffOff$team == fTeam,'strength']; fDef <- ffDef[ffDef$team == fTeam,'strength']
+      oOff <- ffOff[ffOff$team == oTeam,'strength']; oDef <- ffDef[ffDef$team == oTeam,'strength']
+      fWeight <- ifelse(isDef,mean(c(fDef,oDef,1/fDef,1/oOff)),mean(c(fOff,oOff,1/fOff,1/oDef)))
+      fWeight * ff[x, "points"]/17
+    }) 
   }
   return(ff)
 }
@@ -868,6 +932,40 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
     `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
 }
 
+add_ecr_override <- function (projection_table) 
+{
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week") 
+  ecr_pos <- lg_type %>% imap(~scrape_ecr(rank_period = ifelse(week == 0, "draft", "week"), 
+                                          position = ifelse(week == 0, "Overall", .y), rank_type = .x)) %>% 
+    map(select, id, pos_ecr = avg, sd_ecr = std_dev) %>% 
+    bind_rows() %>% distinct(id,.keep_all = TRUE)
+  projection_table <- left_join(projection_table, ecr_pos, 
+                                by = "id")
+  if (week == 0) {
+    lg_ov <- ifelse(any(lg_type == "PPR"), "PPR", ifelse(any(lg_type == 
+                                                               "Half"), "Half", "Std"))
+    ecr_overall <- scrape_ecr(rank_period = "draft", rank_type = lg_ov) %>% 
+      select(id, ecr = avg)
+    projection_table <- left_join(projection_table, ecr_overall, 
+                                  by = "id")
+  }
+  projection_table %>% `attr<-`(which = "season", season) %>% 
+    `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", 
+                                                lg_type)
+}
+add_player_info_override <- function (projection_table) 
+{
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week")
+  select(player_table, id, first_name, last_name, team, position, 
+         age, exp) %>% inner_join(projection_table, by = c("id" = "id", "position" = "pos")) %>% 
+    `attr<-`(which = "season", season) %>% `attr<-`(which = "week", 
+                                                    week) %>% `attr<-`(which = "lg_type", lg_type)
+}
+
 add_player_bye <- function(projection_table){
   lg_type <- attr(projection_table, "lg_type")
   season <- attr(projection_table, "season")
@@ -888,8 +986,8 @@ getFFAnalytics_SrcWeights <- function(){
   #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
   #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
   #NumberFire throws error on projections..
-  ffWeights <- c(FantasySharks = 0.327, RTSports = 0.330, CBS = 0.344, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
-                 FantasyData = 0.428, FantasyPros = 0.220, FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
+  ffWeights <- c(FantasySharks = 0.327, FantasyData = 0.428, RTSports = 0.330, CBS = 0.344, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
+                 FantasyPros = 0.220, FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
   return(ffWeights)
 }
 
@@ -990,7 +1088,50 @@ getTeamRankingDataTable <- function(remote_driver, dataURL){
   return(table)
 }
 
-getDefenseStrength <- function(rawData){
-  #ffDef <- ff[ff$pos == "DST",]
-  ffDef <- rawData[["DST"]]
+getStrengthDefense <- function(ff){
+  ffDef <- ff[ff$pos == "DST",] %>% select(team,pId,points)
+  ffDefMean <- mean(ffDef$points)
+  ffDef <- ffDef %>% mutate(strength = points/ffDefMean) 
+  return(ffDef)
+}
+
+getStrengthOffense <- function(ff){
+  ffOff <- ff[ff$pos != "DST",] %>% select(team,pos,pId,points)
+  ffQB <- ffOff %>% filter(pos == "QB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("QB",c("","Pts"))))
+  ffRB <- ffOff %>% filter(pos == "RB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("RB",c("","Pts"))))
+  ffWR <- ffOff %>% filter(grepl('TE|WR',pos)) %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("WR",c("","Pts"))))
+  
+  ffOffTotal <- ffQB %>% inner_join(ffRB, by='team') %>% inner_join(ffWR, by='team')
+  ffOffTotal <- ffOffTotal %>% mutate(points=sum(QBPts,RBPts,WRPts)) %>% arrange(desc(points)) %>% as.data.frame()
+  ffOffMean <- mean(ffOffTotal$points)
+  ffOff <- ffOffTotal %>% mutate(strength = points/ffOffMean)
+  return(ffOff)
+}
+
+updateMissingIds <- function(ff, allPlayers){
+  playersMissing <- ff[!(ff$pId %in% allPlayers$pId),]
+  if(nrow(playersMissing)>0){
+    ffPlayerIds <- playersMissing$pId
+    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=1
+      fPlayer <- playersMissing[x,]
+      teamPlayers <- allPlayers %>% filter(team == fPlayer$team)
+      strFirstNames <- teamPlayers %>% select(first_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
+      strLastNames <- teamPlayers %>% select(last_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
+      fPlayerFirst <- fPlayer$first_name %>% tm::removePunctuation() %>% tolower()
+      fPlayerLast <- fPlayer$last_name %>% tm::removePunctuation() %>% tolower()
+      resFirst <- stringdist::stringdistmatrix(strFirstNames,fPlayerFirst,method = 'lcs')[,1]
+      resLast <- stringdist::stringdistmatrix(strLastNames,fPlayerLast,method = 'lcs')[,1]
+      resName <- resFirst + resLast
+      aPlayer <- teamPlayers[which(resName == resName %>% min()),'pId']
+      aPlayer <- head(aPlayer[!is.na(aPlayer)],1)
+      if(length(aPlayer)==0) aPlayer <- NA
+      aPlayer
+    }))
+    names(allPlayerIds) <- ffPlayerIds
+    for(aX in 1:length(allPlayerIds)){
+      ff[ff$pId == names(allPlayerIds)[aX],'pId'] <- allPlayerIds[aX]
+    }
+    print(allPlayerIds)
+  }
+  return(ff)
 }

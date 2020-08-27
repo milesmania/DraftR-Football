@@ -6,7 +6,7 @@ fffile <- paste0("Data/ffa_customrankings",Year(Sys.Date()),"-0.csv")
 player_table <- player_table %>% updateTeamNames()
 
 rawData <- getFFAnalytics_RawData(rawDataFile)
-
+#rawDataWR <- rawData[["WR"]]
 ffProjections <- getFFAnalytics_Projections_CSV(fffile,data_result=rawData)
 
 config <- setConfigTxt()
@@ -27,7 +27,7 @@ availChartX <- "points"
 ff <- read.csv(fffile,stringsAsFactors = F)
 
 #colnames(ff)[c(1,2,4)] <- c("id", "name","pos")
-
+colnames(ff)[colnames(ff)=="position"] <- "pos"
 #Set up ordered table
 ffCols <- c("pos","name","team","age","bye","points","upper","lower","vor","vorHigh","vorLow","dropoff","risk","adp","sleeper")
 #ffCols[!(ffCols %in% colnames(ff))]
@@ -41,9 +41,12 @@ ffd<-ff[,c("id","pos","name","points","vor","risk")]
 fft <- fft[!grepl("LB|DL|DB",fft$pos),]; rownames(fft) <- 1:nrow(fft)
 ff <- ff[!grepl("LB|DL|DB",ff$pos),]; rownames(ff) <- 1:nrow(ff)
 
-ff$pId <- unlist(sapply(1:nrow(ff),function(x) paste(ff[x,'name'],ff[x,'team'],ff[x,'pos'],sep="|")))
-
-ff <- getManualProjections_Weekly(ff=ff)
-
 pFileName <- gsub("Draft","Player",draftFile)
 allPlayers <- updatePlayersFromSleeper(pFileName=pFileName,leagueId)
+
+#ff <- ff %>% left_join(allPlayers[,c("player_id","pId")], by = c("player_id" = "player_id"))
+
+ff$pId <- unlist(sapply(1:nrow(ff),function(x) paste(ff[x,'name'],ff[x,'team'],ff[x,'pos'],sep="|")))
+ff <- updateMissingIds(ff,allPlayers)
+
+ff <- getManualProjections_Strength(ff=ff)
