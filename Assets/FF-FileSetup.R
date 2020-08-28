@@ -48,5 +48,12 @@ allPlayers <- updatePlayersFromSleeper(pFileName=pFileName,leagueId)
 
 ff$pId <- unlist(sapply(1:nrow(ff),function(x) paste(ff[x,'name'],ff[x,'team'],ff[x,'pos'],sep="|")))
 ff <- updateMissingIds(ff,allPlayers)
+ff <- add_adp_fd(ff,allPlayers)
 
 ff <- getManualProjections_Strength(ff=ff)
+
+leagueInfo <- getLeagueInfo(leagueId)
+if(nrow(leagueInfo)==1){
+  prevLeague <- leagueInfo$previous_league_id
+  if(!is.null(prevLeague)) sKeepers <- getKeeperDraftRound(leagueId = prevLeague,ff,writeFile="Data/Keepers.csv", allPlayers=allPlayers)
+}

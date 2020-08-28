@@ -172,7 +172,7 @@ nextAvailProgress <- function(pToForecast,pAvailable,draftResults,pAvail,sTeam, 
   }
   return(nextAvail)
 }
-
+#draftTablePopulate(dfDraft,draftForecast)
 draftTablePopulate <- function(dfDraft,draftForecast){
   dTable <- dfDraft
   dFCast <- draftForecast %>% select(Overall,Round,Team,Pick,team,pos,Selected,ForcastComment) %>% unique()
@@ -277,7 +277,8 @@ setConfigTxt <- function(configFile="Assets/config.txt"){
 }
 
 ffDataAvail <- function(dataAvail,dForecast){
-  dtF <- datatable(dataAvail[,c('name','pos','team','bye','age')], 
+  dataAvail <- dataAvail %>% mutate(adp = round(adp,1))
+  dtF <- datatable(dataAvail[,c('name','pos','team','bye','rank','adp')], 
                    options = list(lengthMenu = c(100, 50, 25, 10), pageLength = 25)) %>%
     formatStyle("pos",target = 'row',
                 backgroundColor = styleEqual(levels=c("QB","RB","WR","TE","DST","K"),
@@ -336,9 +337,9 @@ draftPopulateResults <- function(dfDraft,draftResults){
 }
 
 updateRostersFromSleeper <- function(leagueId,draftResults){#leagueId=469304291434164224
-  sLeague <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId), flatten = TRUE)
-  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
-  sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
+  #sLeague <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId), flatten = TRUE)
+  #sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  #sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
   sPlayers <- getPlayersFromSleeper() 
   if(nrow(sPlayers) > 0){
     unpicked <- draftResults[draftResults$Pick=="","Overall"]
@@ -628,6 +629,7 @@ getDraftFromSleeper <- function(draftId,allPlayers=NULL){
       }
     })
   }
+  dPlayers <- updateMissingIds(dPlayers,allPlayers)
   return(dPlayers)
 }
 
@@ -687,8 +689,6 @@ getPlayersFromSleeper <- function(){
 getRostersFromSleeper <- function(leagueId,pFileName=NULL,sPlayers=NULL){
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
   sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
-  
-  sPicks <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/traded_picks"), flatten = TRUE)
   if(is.null(pFileName)) pFileName <- "Data/FFPlayerData.RData"
   if(is.null(sPlayers)) sPlayers <- updatePlayersFromSleeper(pFileName=pFileName,leagueId)
   #sRoster[[5]]
@@ -812,6 +812,57 @@ getLeagueTransFromSleeper <- function(leagueId, wks = 0:20){#leagueIds<-unique(s
   return(sTrans)
 }
 
+getLeagueInfo <- function(leagueId){#leagueId=469304291434164224
+  sLeague <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId), flatten = TRUE)
+  lCols <- names(sLeague)
+  dLeague <- data.frame(league_id=sLeague[["league_id"]],previous_league_id=sLeague[["previous_league_id"]],stringsAsFactors = F)
+  for(nR in lCols){#nR="league_id"
+    lVal <- sLeague[[nR]]
+    if(!is.null(lVal) & length(lVal)>0){
+      if(length(lVal)>1){
+        lColNames <- names(lVal)
+        for(nV in lColNames){#nV='max_keepers'
+          nVal <- unlist(lVal[[nV]])
+          if(length(nVal)==1){
+            newCol <- paste(nR,nV,sep=".")
+            dLeague[1,newCol] <- nVal
+          }
+        }
+      }else{
+        dLeague[1,nR] <- lVal
+      }
+    }
+  }
+  return(dLeague)
+}
+
+getTradedPicks <- function(leagueId){
+  sPicks <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/traded_picks"), flatten = TRUE)
+  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
+  sUsers <- sUsers %>% select(user_id,display_name) %>% rename_at(vars(c("user_id","display_name")),funs(c("owner_id","name")))
+  sRoster <- sRoster %>% select(roster_id,owner_id) %>% inner_join(sUsers, by='owner_id') %>% select(roster_id,name)
+  rPick <- sPicks %>% inner_join(sRoster,by='roster_id') %>% 
+    inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("prevowner"))), by=c('previous_owner_id'='roster_id')) %>%  
+    inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("newowner"))), by=c('owner_id'='roster_id'))
+  rPicks <- rPick %>% select(season,round,name,newowner,prevowner) %>% arrange(season,round)
+  # rTrades <- rPicks[0,]; rTrades$round.trade <- integer()
+  # for(nR in 1:nrow(rPicks)){#nR=9
+  #   rTrade <- rPicks[nR,]
+  #     rPrev <- rPicks[nR:nrow(rPicks),] %>% filter(newowner == rTrade$prevowner & season == rTrade$season & prevowner == rTrade$newowner)
+  #     if(nrow(rPrev)==0){
+  #       rPrev <- rPicks[nR:nrow(rPicks),] %>% filter(newowner == rTrade$prevowner & season == rTrade$season)
+  #     }
+  #     if(nrow(rPrev)==1){
+  #       rTrade$round.trade <- rPrev$round
+  #       if(!any(rTrades$prevowner == rTrade$newowner & rTrades$round.trade == rTrade$round)){
+  #         rTrades <- rbind(rTrades,rTrade)
+  #       }
+  #     }
+  # }
+  return(rPicks)
+} 
+
 #sKeepers <- getKeeperDraftRound(leagueId = "469304291434164224",ff,writeFile="Data/Keepers.csv", allPlayers=allPlayers)
 getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL, allPlayers = NULL){
   #leagueId <- "469304291434164224"
@@ -870,6 +921,7 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
+  #ffRawRB <- data_result[["RB"]]
   ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
                                       tier_thresholds = tier_thresholds)
   ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
@@ -967,6 +1019,25 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
     `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
 }
 
+add_adp_fd <-function(ff,allPlayers){
+  adp_fd_url <- 'https://fantasydata.com/NFL_Adp/ADP_Read'
+  adp_fd_raw <- jsonlite::fromJSON(adp_fd_url, flatten = TRUE)
+  adp_fd <- adp_fd_raw[["Data"]] %>% select(PlayerID,AverageDraftPosition)
+  adp_fd <- adp_fd %>% inner_join(allPlayers[,c("fantasy_data_id","pId")], by=c("PlayerID" = "fantasy_data_id")) %>% select(pId,AverageDraftPosition)
+  #add defense adp
+  adp_fd_csv <- 'Data/fantasy-football-adp-rankings.csv'
+  if(file.exists(adp_fd_csv)){
+    adp_fd_csv_raw <- read.csv(adp_fd_csv,stringsAsFactors = F)
+    adp_def <- adp_fd_csv_raw %>% filter(Position == "DST") %>% select("Team","AverageDraftPosition")
+    adp_def <- adp_def %>% inner_join(allPlayers[allPlayers$position=="DST",c("team","pId")], by=c("Team" = "team")) %>% select(pId,AverageDraftPosition)
+    adp_fd <- rbind(adp_fd,adp_def) %>% arrange(AverageDraftPosition)
+  }
+  ff2 <- ff %>% left_join(adp_fd[,c("pId","AverageDraftPosition")], by='pId')
+  ff2 <- ff2 %>% rename_at(vars(c("adp","adp_diff","AverageDraftPosition")),funs(c("adp_ff","adp_ff_diff","adp"))) %>% relocate(adp, .before = adp_ff)
+  ff2 <- ff2 %>% mutate(adp_diff = rank - adp) %>% relocate(adp_diff, .after = adp)
+  return(ff2)
+}
+
 add_ecr_override <- function (projection_table) 
 {
   lg_type <- attr(projection_table, "lg_type")
@@ -1036,12 +1107,12 @@ getFFAnalytics_SrcWeightsWeekly <- function(){
 }
 
 getFFAnalytics_VorBaseline <- function(){
-  ffVOR <- c(QB = 13, RB = 35, WR = 36, TE = 13, K = 8, DST = 3, DL = 0, LB = 0, DB = 0)
+  ffVOR <- c(QB = 13, RB = 35, WR = 36, TE = 13, K = 2, DST = 3, DL = 0, LB = 0, DB = 0)
   return(ffVOR)
 }
 
 getFFAnalytics_TierThreshold <- function(){
-  ffTiers <- c(QB = 1, RB = 1, WR = 1, TE = 1, K = 1, DST = 0.1, DL = 1, DB = 1, LB = 1)
+  ffTiers <- c(QB = 1.5, RB = 1, WR = 1, TE = 2, K = 1.5, DST = 1.5, DL = 1, DB = 1, LB = 1)
   return(ffTiers)
 }
 
@@ -1049,7 +1120,7 @@ getFFAnalytics_ScoringSettings <- function(){
   ffScoreSettings <- list(
     pass = list(
       pass_att = 0, pass_comp = 0, pass_inc = 0, pass_yds = 0.04, pass_tds = 4,
-      pass_int = -3, pass_40_yds = 0,  pass_300_yds = 0, pass_350_yds = 0,
+      pass_int = -2, pass_40_yds = 0,  pass_300_yds = 0, pass_350_yds = 0,
       pass_400_yds = 0
     ),
     rush = list(
@@ -1063,12 +1134,12 @@ getFFAnalytics_ScoringSettings <- function(){
     ),
     misc = list(
       all_pos = TRUE,
-      fumbles_lost = -3, fumbles_total = 0,
+      fumbles_lost = -2, fumbles_total = 0,
       sacks = 0, two_pts = 2
     ),
     kick = list(
       xp = 1.0, fg_0019 = 3.0,  fg_2029 = 3.0, fg_3039 = 3.0, fg_4049 = 4.0,
-      fg_50 = 5.0,  fg_miss = 0.0
+      fg_50 = 5.0,  fg_miss = -1.0
     ),
     ret = list(
       all_pos = TRUE,
@@ -1086,8 +1157,8 @@ getFFAnalytics_ScoringSettings <- function(){
     pts_bracket = list(
       list(threshold = 0, points = 10),
       list(threshold = 6, points = 7),
-      list(threshold = 20, points = 4),
-      list(threshold = 34, points = 0),
+      list(threshold = 20, points = 1),
+      list(threshold = 28, points = 0),
       list(threshold = 99, points = -4)
     )
   )
@@ -1147,20 +1218,9 @@ updateMissingIds <- function(ff, allPlayers){
   playersMissing <- ff[!(ff$pId %in% allPlayers$pId),]
   if(nrow(playersMissing)>0){
     ffPlayerIds <- playersMissing$pId
-    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=1
+    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=18
       fPlayer <- playersMissing[x,]
-      teamPlayers <- allPlayers %>% filter(team == fPlayer$team)
-      strFirstNames <- teamPlayers %>% select(first_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
-      strLastNames <- teamPlayers %>% select(last_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
-      fPlayerFirst <- fPlayer$first_name %>% tm::removePunctuation() %>% tolower()
-      fPlayerLast <- fPlayer$last_name %>% tm::removePunctuation() %>% tolower()
-      resFirst <- stringdist::stringdistmatrix(strFirstNames,fPlayerFirst,method = 'lcs')[,1]
-      resLast <- stringdist::stringdistmatrix(strLastNames,fPlayerLast,method = 'lcs')[,1]
-      resName <- resFirst + resLast
-      aPlayer <- teamPlayers[which(resName == resName %>% min()),'pId']
-      aPlayer <- head(aPlayer[!is.na(aPlayer)],1)
-      if(length(aPlayer)==0) aPlayer <- NA
-      aPlayer
+      findMissingPid(fPlayer,allPlayers)
     }))
     names(allPlayerIds) <- ffPlayerIds
     for(aX in 1:length(allPlayerIds)){
@@ -1170,4 +1230,29 @@ updateMissingIds <- function(ff, allPlayers){
     print(allPlayerIds)
   }
   return(ff)
+}
+
+findMissingPid <- function(fPlayer, allPlayers){
+  teamPlayers <- allPlayers %>% filter(team == fPlayer$team)
+  tPlayer <- findMissingPidALL(fPlayer,allPlayers)
+  aPlayer <- findMissingPidALL(fPlayer,teamPlayers)
+  tOrA <- attr(tPlayer,"resMin") < attr(aPlayer,"resMin") 
+  aPlayer <- ifelse(tOrA,tPlayer,aPlayer)
+  return(aPlayer)
+}
+
+findMissingPidALL <- function(fPlayer, teamPlayers){
+  strFirstNames <- teamPlayers %>% select(first_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
+  strLastNames <- teamPlayers %>% select(last_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
+  fPlayerFirst <- fPlayer$first_name %>% tm::removePunctuation() %>% tolower()
+  fPlayerLast <- fPlayer$last_name %>% tm::removePunctuation() %>% tolower()
+  resFirst <- stringdist::stringdistmatrix(strFirstNames,fPlayerFirst,method = 'lcs')[,1]
+  resLast <- stringdist::stringdistmatrix(strLastNames,fPlayerLast,method = 'lcs')[,1]
+  resName <- resFirst + resLast
+  resMin <- resName %>% min()
+  aPlayer <- teamPlayers[which(resName == resMin),'pId']
+  aPlayer <- head(aPlayer[!is.na(aPlayer)],1)
+  if(length(aPlayer)==0) aPlayer <- NA
+  attr(aPlayer,"resMin") <- resMin
+  return(aPlayer)
 }
