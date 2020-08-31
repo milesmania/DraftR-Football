@@ -183,14 +183,19 @@ draftTablePopulate <- function(dfDraft,draftForecast){
     dTable[,j] <- dFCastCol$Pick
     dRowFcast <- dFCastCol$Selected=="forecast"
     #dFCastCol <- dFCastCol[dForecastRows,]
-    dPosColor <- sapply(dFCastCol$pos,function(x){switch(x,"QB"="pink","RB"="lightgreen","WR"="lightblue",
-                                                         "TE"="orange","DST"="violet","K"="white","white")
+    dPosColor <- sapply(1:length(dRowFcast),function(x){
+      xP <- dFCastCol[x,'pos']
+      if(dRowFcast[x]){
+        switch(xP,"QB"="lightpink","RB"="lightgreen","WR"="lightblue","TE"="orange","DST"="violet","K"="white","white")
+      }else{
+        switch(xP,"QB"="hotpink","RB"="limegreen","WR"="lightsteelblue","TE"="goldenrod","DST"="violetred","K"="gray","gray")
+      }
     })
     dTable[,j] <- dTable[,j] %>% text_spec(format="html", background = dPosColor, #ifelse(dRowFcast,"white",dPosColor),
                                            angle = ifelse(dRowFcast,10,0), 
                                            #color = ifelse(dRowFcast,dPosColor,"black"), 
-                                           bold = !dRowFcast,
-                                           font_size = ifelse(dRowFcast,"x-small","small")
+                                           bold = !dRowFcast
+                                           ,font_size = "x-small" #,font_size = ifelse(dRowFcast,"x-small","small")
                                            #,tooltip = dFCastCol$ForecastComment
                                            #,popover = spec_popover(content = dFCastCol$Selected, trigger = "click", position = "auto")
     )
@@ -915,15 +920,16 @@ getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K
   save(rawData, file = ffDataFile)
   return(rawData)
 }
-
+#rankRB <- rawData[["RB"]]
 getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
                                      season = 2020, week = 0, avgType = "robust"){
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
+  vor_baseline <- getFFAnalytics_VorBaseline()
   #ffRawRB <- data_result[["RB"]]
   ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
-                                      tier_thresholds = tier_thresholds)
+                                      vor_baseline = vor_baseline, tier_thresholds = tier_thresholds)
   ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
   ff_projections <- ff_projections %>% add_ecr_override() %>% #add_ecr() %>% 
     add_risk() %>%
@@ -1091,9 +1097,10 @@ getFFAnalytics_SrcWeights <- function(){
   # ffWeights <- c(CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, FFToday = 0.379,
   #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
   #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
-  #NumberFire throws error on projections..
-  ffWeights <- c(FantasySharks = 0.327, FantasyData = 0.428, RTSports = 0.330, CBS = 0.344, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
+  #NumberFire and FFToday throws error on projections..
+  ffWeights <- c(FantasySharks = 0.327, FantasyData = 0.428, RTSports = 0.330, FFToday = 0.379, CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
                  FantasyPros = 0.220, FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
+  
   return(ffWeights)
 }
 
@@ -1107,7 +1114,7 @@ getFFAnalytics_SrcWeightsWeekly <- function(){
 }
 
 getFFAnalytics_VorBaseline <- function(){
-  ffVOR <- c(QB = 13, RB = 35, WR = 36, TE = 13, K = 2, DST = 3, DL = 0, LB = 0, DB = 0)
+  ffVOR <- c(QB = 12, RB = 72, WR = 84, TE = 12, K = 0, DST = 0, DL = 0, LB = 0, DB = 0)
   return(ffVOR)
 }
 
@@ -1255,4 +1262,81 @@ findMissingPidALL <- function(fPlayer, teamPlayers){
   if(length(aPlayer)==0) aPlayer <- NA
   attr(aPlayer,"resMin") <- resMin
   return(aPlayer)
+}
+
+loadEspnProjections <- function(){
+  # Grab the JSON from a known public league; can be any, since grabbing stats not points
+  json_file <- "https://fantasy.espn.com/apis/v3/games/ffl/seasons/2020/segments/0/leagues/8557?view=kona_player_info"
+  json_data <- jsonlite::fromJSON(json_file, flatten = TRUE)
+  
+  playerData <- json_data[["players"]]
+  # Empty object to append player rows to
+  projections = c()
+  
+  # Loop through all players (no positional separation, do that elsewhere)
+  for(pI in 1:nrow(playerData)){#pI=158
+    p <- playerData[pI,]
+    playerStats <- p$player.stats[[1]][3,]
+    
+    player_df = data.frame(
+      id   = p$player.id,
+      name = p$player.fullName,
+      
+      # Only grab values if they exists.
+      pass_comp  = ifelse(!is.null(playerStats$stats.1),playerStats$stats.1,NA),
+      pass_att   = ifelse(!is.null(playerStats$stats.0),playerStats$stats.0,NA),
+      pass_yds   = ifelse(!is.null(playerStats$stats.3),playerStats$stats.3,NA),
+      pass_td    = ifelse(!is.null(playerStats$stats.4),playerStats$stats.4,NA),
+      pass_2pt   = ifelse(!is.null(playerStats$stats.19),playerStats$stats.19,NA),
+      pass_int   = ifelse(!is.null(playerStats$stats.20),playerStats$stats.20,NA),
+      
+      rush_att   = ifelse(!is.null(playerStats$stats.23),playerStats$stats.23,NA),
+      rush_yds   = ifelse(!is.null(playerStats$stats.24),playerStats$stats.24,NA),
+      rush_td    = ifelse(!is.null(playerStats$stats.25),playerStats$stats.25,NA),
+      rush_2pt   = ifelse(!is.null(playerStats$stats.26),playerStats$stats.26,NA),
+      
+      rec        = ifelse(!is.null(playerStats$stats.53),playerStats$stats.53,NA),
+      rec_tgt    = ifelse(!is.null(playerStats$stats.58),playerStats$stats.58,NA),
+      rec_yds    = ifelse(!is.null(playerStats$stats.42),playerStats$stats.42,NA),
+      rec_td     = ifelse(!is.null(playerStats$stats.43),playerStats$stats.43,NA),
+      rec_2pt    = ifelse(!is.null(playerStats$stats.44),playerStats$stats.44,NA),
+      
+      fumbles    = ifelse(!is.null(playerStats$stats.72),playerStats$stats.72,NA),
+      
+      fg0039     = ifelse(!is.null(playerStats$stats.80),playerStats$stats.80,NA),
+      fgmiss0039 = ifelse(!is.null(playerStats$stats.82),playerStats$stats.82,NA),
+      fg4049     = ifelse(!is.null(playerStats$stats.77),playerStats$stats.77,NA),
+      fgmiss4049 = ifelse(!is.null(playerStats$stats.79),playerStats$stats.79,NA),
+      fg50       = ifelse(!is.null(playerStats$stats.74),playerStats$stats.74,NA),
+      fgmiss50   = ifelse(!is.null(playerStats$stats.76),playerStats$stats.76,NA),
+      xpt        = ifelse(!is.null(playerStats$stats.86),playerStats$stats.86,NA),
+      xptmiss    = ifelse(!is.null(playerStats$stats.88),playerStats$stats.88,NA),
+      
+      sacks      = ifelse(!is.null(playerStats$stats.99),playerStats$stats.99,NA),
+      fforced    = ifelse(!is.null(playerStats$stats.106),playerStats$stats.106,NA),
+      frecovered = ifelse(!is.null(playerStats$stats.96),playerStats$stats.96,NA),
+      def_int    = ifelse(!is.null(playerStats$stats.95),playerStats$stats.95,NA),
+      safeties   = ifelse(!is.null(playerStats$stats.98),playerStats$stats.98,NA),
+      blocks     = ifelse(!is.null(playerStats$stats.97),playerStats$stats.97,NA),
+      
+      block_td   = ifelse(!is.null(playerStats$stats.93),playerStats$stats.93,NA),
+      kret_td    = ifelse(!is.null(playerStats$stats.101),playerStats$stats.101,NA),
+      pret_td    = ifelse(!is.null(playerStats$stats.102),playerStats$stats.102,NA),
+      fumret_td  = ifelse(!is.null(playerStats$stats.103),playerStats$stats.103,NA),
+      intret_td  = ifelse(!is.null(playerStats$stats.104),playerStats$stats.104,NA),
+      
+      pa0        = ifelse(!is.null(playerStats$stats.89),playerStats$stats.89,NA),
+      pa16       = ifelse(!is.null(playerStats$stats.90),playerStats$stats.90,NA),
+      pa713      = ifelse(!is.null(playerStats$stats.91),playerStats$stats.91,NA),
+      pa1417     = ifelse(!is.null(playerStats$stats.92),playerStats$stats.92,NA),
+      pa1720     = ifelse(!is.null(playerStats$stats.121),playerStats$stats.121,NA),
+      pa2127     = ifelse(!is.null(playerStats$stats.122),playerStats$stats.122,NA),
+      pa2834     = ifelse(!is.null(playerStats$stats.123),playerStats$stats.123,NA),
+      pa3545     = ifelse(!is.null(playerStats$stats.124),playerStats$stats.124,NA),
+      pa45plus   = ifelse(!is.null(playerStats$stats.125),playerStats$stats.125,NA)
+    )
+    
+    projections <- bind_rows(projections, player_df)
+    return(projections)
+  }
 }
