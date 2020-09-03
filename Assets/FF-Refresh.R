@@ -4,8 +4,7 @@ refreshCharts <- function(values,output, input, session, ... ){
   #update draft results
   withProgress(message = 'Refreshing Draft Data', value = 0, {
     incProgress(0.1,paste('Refreshing Draft from Sleeper ...'))
-    draftResults <- draftPopulateResults(dfDraft,draftResults)
-    values$dResult <- draftResults 
+    draftResults <- draftPopulateResults(values$data,values$dResult)
     picksToUpdate <- updateDraftFromSleeper(draftId,draftResults,allPlayers)
     
     setProgress(0.2,paste('Populating Draft from Sleeper ...'))
@@ -13,6 +12,7 @@ refreshCharts <- function(values,output, input, session, ... ){
     dfDraft <- draftPopulate(picksToUpdate,dfDraft)
     values$data <- dfDraft
     draftResults <- draftPopulateResults(dfDraft,draftResults)
+    values$dResult <- draftResults 
     
     #Get playerTaken and players available
     setProgress(0.3,paste('Getting Players Taken and Available ...'))

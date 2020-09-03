@@ -21,7 +21,7 @@ if(file.exists(draftFile)){
     rosters <- data.frame(matrix("",length(availPlayers),length(teams)), stringsAsFactors = F)
     colnames(rosters) <- teams; rownames(rosters) <- rosterPositions[1:nrow(rosters)]; #rosters[,] <- ""
     
-    draftResults <- data.frame('Overall'=integer(),'Round'=integer(),'Team'=character(),'Pick'=character(), stringsAsFactors = F)
+    draftResults <- data.frame('Overall'=integer(),'Round'=integer(),'Slot'=integer(),'Team'=character(),'Pick'=character(), stringsAsFactors = F)
     n <- 0
     for(x in 1:nRounds){#x=1
       if(IsOdd(x)){
@@ -33,6 +33,7 @@ if(file.exists(draftFile)){
         n <- n + 1
         draftResults[n,'Overall'] <- n
         draftResults[n,'Round'] <- x
+        draftResults[n,'Slot'] <- t
         draftResults[n,'Team'] <- teams[t]
       }
     }

@@ -175,12 +175,19 @@ nextAvailProgress <- function(pToForecast,pAvailable,draftResults,pAvail,sTeam, 
 #draftTablePopulate(dfDraft,draftForecast)
 draftTablePopulate <- function(dfDraft,draftForecast){
   dTable <- dfDraft
-  dFCast <- draftForecast %>% select(Overall,Round,Team,Pick,team,pos,Selected,ForcastComment) %>% unique()
+  dFCast <- draftForecast %>% select(Overall,Round,Team,Slot,Pick,team,pos,Selected,ForcastComment) %>% unique()
   
   dComments <- matrix(data=NA,nrow=nrow(dTable),ncol=ncol(dTable))
-  for(j in 1:ncol(dTable)){ #j=1
-    dFCastCol <- dFCast[dFCast$Team==colnames(dTable)[j],]
+  for(j in 1:ncol(dTable)){ #j=4
+    dColTeam <- colnames(dTable)[j]
+    dFCastCol <- dFCast[dFCast$Slot==j,]
     dTable[,j] <- dFCastCol$Pick
+    dColTraded <- dFCastCol$Team != dColTeam
+    if(any(dColTraded)) dTable[,j] <- sapply(1:nrow(dFCastCol), function(x){#x=6
+      if(dColTraded[x]) paste(dFCastCol[x,'Pick'],"**TO:", dFCastCol[x,'Team']) else{
+        dFCastCol[x,'Pick']
+      }
+      })
     dRowFcast <- dFCastCol$Selected=="forecast"
     #dFCastCol <- dFCastCol[dForecastRows,]
     dPosColor <- sapply(1:length(dRowFcast),function(x){
@@ -188,7 +195,7 @@ draftTablePopulate <- function(dfDraft,draftForecast){
       if(dRowFcast[x]){
         switch(xP,"QB"="lightpink","RB"="lightgreen","WR"="lightblue","TE"="orange","DST"="violet","K"="white","white")
       }else{
-        switch(xP,"QB"="hotpink","RB"="limegreen","WR"="lightsteelblue","TE"="goldenrod","DST"="violetred","K"="gray","gray")
+        switch(xP,"QB"="hotpink","RB"="limegreen","WR"="lightsteelblue","TE"="goldenrod","DST"="violet","K"="gray","gray")
       }
     })
     dTable[,j] <- dTable[,j] %>% text_spec(format="html", background = dPosColor, #ifelse(dRowFcast,"white",dPosColor),
@@ -298,8 +305,9 @@ ffDataAvail <- function(dataAvail,dForecast){
 }
 
 ## Sleeper Draft ####
-#picksToUpdate <- updateDraftFromSleeper(draftId,draftResults)
+#picksToUpdate <- updateDraftFromSleeper(draftId,draftResults,allPlayers)
 #dfDraft <- draftPopulate(picksToUpdate,dfDraft)
+#dfDraftForecast <- draftPopulateResults(dfDraft,draftForecast)
 updateDraftFromSleeper <- function(draftId,draftResults,allPlayers){#draftId=469304291434164225
   dPlayers <- getDraftFromSleeper(draftId, allPlayers)
   if(nrow(dPlayers) > 0){
@@ -317,14 +325,14 @@ updateDraftFromSleeper <- function(draftId,draftResults,allPlayers){#draftId=469
     unpicked <- draftResults[draftResults$Pick=="","Overall"]
     slPicked <- dPlayers$pick_no
     picksToFill <- slPicked[slPicked %in% unpicked]
-    return(dPlayers[dPlayers$pick_no %in% picksToFill,c('round','draft_slot','pId')])
+    return(dPlayers[dPlayers$pick_no %in% picksToFill,c('pick_no','round','draft_slot','pId')])
   }
   return(dPlayers)
 }
 
 draftPopulate <- function(picksToUpdate,dfDraft){
   if(nrow(picksToUpdate) > 0){
-    for(dD in 1:nrow(picksToUpdate)){#dD=1
+    for(dD in 1:nrow(picksToUpdate)){#dD=42
       dPick <- picksToUpdate[dD,]
       dfDraft[dPick$round,dPick$draft_slot] <- dPick$pId
     }
@@ -332,9 +340,11 @@ draftPopulate <- function(picksToUpdate,dfDraft){
   return(dfDraft)
 }
 draftPopulateResults <- function(dfDraft,draftResults){
-  for(x in 1:nrow(dfDraft)){#x=11  #Rounds
-    for(t in 1:ncol(dfDraft)){#t=10  #Teams
-      pick <- draftResults[draftResults$Round == x & draftResults$Team == colnames(dfDraft)[t],"Overall"]
+  for(x in 1:nrow(dfDraft)){#x=6  #Rounds
+    for(t in 1:ncol(dfDraft)){#t=8  #Teams
+      #pick <- draftResults[draftResults$Round == x & draftResults$Team == colnames(dfDraft)[t],"Overall"]
+      pick <- draftResults[draftResults$Round == x & draftResults$Slot == t,"Overall"]
+      if(length(pick)>1) pick <- pick[pick == max(pick)]
       draftResults[pick, 'Pick'] <- as.character(dfDraft[x,t])
     }
   }
@@ -712,7 +722,7 @@ getRostersFromSleeper <- function(leagueId,pFileName=NULL,sPlayers=NULL){
   return(allRoster)
 }
 #getUsersFromSleeper(leagueId,draftId)
-getUsersFromSleeper <- function(leagueId,draftId){
+getUsersFromSleeperOld <- function(leagueId,draftId){
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
   if(length(sUsers)==0) return(NULL)
   dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
@@ -722,6 +732,28 @@ getUsersFromSleeper <- function(leagueId,draftId){
     if(is.null(draftSpot)) draftSpot <- sUsers[x,'display_name']
     draftSpot
   })
+  return(draftOrder)
+}
+getUsersFromSleeper <- function(leagueId,draftId){
+  sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
+  if(length(sUsers)==0) return(NULL)
+  dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
+  nTeams <- dDraft[["settings"]]$teams
+  sUsers <- sUsers[,c('user_id','display_name')]
+  nDraftOrder <- unlist(dDraft[["draft_order"]])
+  if(length(nDraftOrder)==nTeams & !any(!(sUsers$user_id %in% names(nDraftOrder)))){
+    sUsers$draft_order <- sapply(1:nrow(sUsers),function(x){#x=1
+      uId <- sUsers[x,'user_id']
+      draftSpot <- nDraftOrder[names(nDraftOrder)==uId]
+    })
+    draftOrder <- sUsers[order(sUsers$draft_order),'display_name'] 
+  }else{
+    draftOrder <- sapply(1:nTeams,function(x){#x=1
+      draftSpot <- dDraft[["metadata"]][[paste0("slot_name_",x)]]
+      if(is.null(draftSpot)) draftSpot <- sUsers[x,'display_name']
+      draftSpot
+    })
+  }
   return(draftOrder)
 }
 #getUserLeaguesFromSleeper(userId)
