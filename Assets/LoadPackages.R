@@ -21,8 +21,11 @@ if(!("ffanalytics" %in% installed.packages())){
 
 library(ffanalytics)
 
+DraftYear <- Year(Sys.Date())
+
 if(!exists("player_table")){
-  player_table <<- httr::GET("https://api.myfantasyleague.com/2020/export?TYPE=players&L=&APIKEY=&DETAILS=1&SINCE=&PLAYERS=&JSON=1") %>%
+  apiUrl <- paste0("https://api.myfantasyleague.com/",DraftYear,"/export?TYPE=players&L=&APIKEY=&DETAILS=1&SINCE=&PLAYERS=&JSON=1")
+  player_table <<- httr::GET(apiUrl) %>%
     httr::content() %>% `[[`("players") %>% `[[`("player") %>%
     purrr::map(tibble::as_tibble) %>%
     dplyr::bind_rows() %>%
@@ -32,5 +35,5 @@ if(!exists("player_table")){
     dplyr::mutate(birthdate = as.Date(as.POSIXct(as.numeric(birthdate), origin = "1970-01-01")),
                   position = dplyr::recode(position, Def = "DST", PK = "K"),
                   age = as.integer(lubridate::year(Sys.time()) - lubridate::year(birthdate)),
-                  exp = 2020 - as.integer(draft_year))
+                  exp = DraftYear - as.integer(draft_year))
 }

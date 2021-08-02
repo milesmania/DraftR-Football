@@ -5,7 +5,7 @@ fffile <- paste0("Data/ffa_customrankings",Year(Sys.Date()),"-0.csv")
 
 player_table <- player_table %>% updateTeamNames()
 
-rawData <- getFFAnalytics_RawData(rawDataFile)
+rawData <- getFFAnalytics_RawData(ffDataFile=rawDataFile)
 #rawDataWR <- rawData[["WR"]]
 ffProjections <- getFFAnalytics_Projections_CSV(fffile,data_result=rawData)
 
@@ -54,7 +54,7 @@ ff <- getManualProjections_Strength(ff=ff)
 
 leagueInfo <- getLeagueInfo(leagueId)
 if(nrow(leagueInfo)==1){
-  keeperFile <- "Data/Keepers.csv"
+  keeperFile <- paste0("Data/Keepers-",gsub(" ","",leagueInfo$name),leagueInfo$season,".csv")
   prevLeague <- leagueInfo$previous_league_id
   if(!file.exists(fffile)){
     if(!is.null(prevLeague)) sKeepers <- getKeeperDraftRound(leagueId = prevLeague,ff,writeFile=keeperFile, allPlayers=allPlayers)

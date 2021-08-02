@@ -59,7 +59,7 @@ shinyServer(function(input, output, session) {
     }
     
     output$draftForecasted = renderText(
-      draftTablePopulate(ffValues$data, ffValues$dForecast)
+      draftTablePopulate(dfDraft, draftForecast)
     )
   })
   

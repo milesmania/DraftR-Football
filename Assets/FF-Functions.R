@@ -65,7 +65,7 @@ forecastDraft <- function(draftResults,ff){
   dFF <- ff[!(ff$pId %in% dForcast[!rForecast,'Pick']),]
   if(any(rForecast)){
     for(rF in dForcast[rForecast,'Overall']){
-      #for(rF in 1:55){#rF=56
+      #for(rF in 1:111){#rF=112
       dTeam <- dForcast[rF,'Team']
       dPlayers <- subset(dForcast,Pick!="" & Team == dTeam,Pick,drop=T)
       dComments <- ""
@@ -133,6 +133,10 @@ forecastDraft <- function(draftResults,ff){
     #dForcast[rForecast,'Pick'] <- ff[1:nrow(dForcast[rForecast,]),'pId']
   }
   dForcast <- merge(dForcast,ff, by.x = "Pick", by.y = "pId", all.x=TRUE, sort=FALSE)
+  dForcastDups <- dForcast %>% add_count(Overall) %>% filter(n>1)
+  if(nrow(dForcastDups)>0){
+    
+  }
   dForcast <- dForcast[,c(2:4,1,5:ncol(dForcast))]
   dForcast <- dForcast[order(dForcast$Overall),]
   return(dForcast)
@@ -437,16 +441,55 @@ updateStatNames <- function(ff){
   return(ff)
 }
 
+sleeperChatSearch <- function(leagueId){
+  #leagueId <- 338482279892389888
+  driver <- rsDriver(browser=c("chrome"), chromever="85.0.4183.87", port = 4444L)
+  remote_driver <- driver[["client"]] #remote_driver$open()
+  
+  dataURL <- paste0('https://sleeper.app/leagues/',leagueId)
+  chatTable <- getSleeperChat(remote_driver,dataURL)
+  
+  remote_driver$close()
+  driver$server$stop()
+  system("taskkill /im java.exe /f", intern=FALSE, ignore.stdout=FALSE)
+}
+
+getSleeperChat <- function(remote_driver, dataURL){
+  
+  remote_driver$navigate(dataURL)
+  
+  Sys.sleep(2)
+  chatWindow <- remote_driver$findElement(using = 'class', value = 'comment-list')
+  webElem <- chatWindow$getElementAttribute("innerHTML")[[1]]
+  chatHtml <- read_html(webElem)
+  chatContainers <- chatHtml %>% html_nodes(xpath = "//div[@class='content-container']") 
+  
+  chatTable <- data.frame(UserName=character(),Txt=character(),stringsAsFactors = F)
+  for(cC in 1:length(chatContainers)){#cC <- 25
+    cContainer <- chatContainers[[cC]] %>% html_children() #cContainer %>% html_nodes('div')
+    chatName <- cContainer %>% html_nodes(xpath = ".//div[@class='username-component']") %>% html_text()
+    chatTxt <- cContainer %>% html_nodes(xpath = ".//span[contains(@class,'message-text')]") %>% html_text()
+    innerHtml <- cContainer %>% html_nodes('.//div')
+    for(tI in chatTxt){
+      chatTable[nrow(chatTable)+1,] <- c(chatName,tI)
+    }
+  }
+  chatNames <- chatHtml %>% html_nodes(xpath = "//div[@class='username-component']")
+  chatTxt <- chatHtml %>% html_nodes(xpath = "//span[contains(@class,'message-text')]")
+  
+  return(table)
+}
+
 ## Sleeper Projections ####
 #sP <- updateProjectionsFromSleeper(sPlayers,leagueId)
-updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2020,wks=1:16){#leagueId=469304291434164224
+updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=Year(Sys.Date()),wks=1:16){#leagueId=469304291434164224
   for(wk in wks){#wk=3
     sPlayers <- getProjectionsFromSleeper(sPlayers,leagueId,sYr,wk)
   } 
   return(sPlayers)
 }
 
-getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=2020,wk=1,ptsCol="pts_std"){#leagueId=469304291434164224
+getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=Year(Sys.Date()),wk=1,ptsCol="pts_std"){#leagueId=469304291434164224
   sP <- sPlayers
   pCol <- paste0("PtsWk",formatC(wk, width=2, flag="0"))
   sP[,pCol] <- 0
@@ -900,7 +943,7 @@ getTradedPicks <- function(leagueId){
   return(rPicks)
 } 
 
-#sKeepers <- getKeeperDraftRound(leagueId = "469304291434164224",ff,writeFile="Data/Keepers.csv", allPlayers=allPlayers)
+#sKeepers <- getKeeperDraftRound(leagueId = leagueId,ff,writeFile="Data/Keepers-2021.csv", allPlayers=allPlayers)
 getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL, allPlayers = NULL){
   #leagueId <- "469304291434164224"
   if(is.null(draftId)) draftId <- getLeagueDraftsFromSleeper(leagueId)$draft_id
@@ -939,7 +982,7 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
 
 ## ffanalytics Projections ####
 getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
-                                       season = 2020, week = 0, avgType = "robust"){
+                                       season = 2021, week = 0, avgType = "robust"){
   if(file.exists(ffDataFile)){
     if(file.info(ffDataFile)$mtime >= Sys.Date()){
       load(ffDataFile)
@@ -954,7 +997,7 @@ getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K
 }
 #rankRB <- rawData[["RB"]]
 getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
-                                     season = 2020, week = 0, avgType = "robust"){
+                                     season = 2021, week = 0, avgType = "robust"){
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
@@ -979,7 +1022,7 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
 }
 
 getFFAnalytics_Weekly <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"),
-                                       season = 2020, weeks = 1:16, avgType = "robust"){
+                                       season = Year(Sys.Date()), weeks = 1:16, avgType = "robust"){
   src_weights <- getFFAnalytics_SrcWeightsWeekly()
   for(week in weeks){#week=3
     ff_weekly <- getFFAnalytics_Projections(pos = pos, season = season, week = week, src_weights = src_weights, avgType = avgType)
@@ -1024,7 +1067,7 @@ getManualProjections_Strength <- function(ff, weeks = 1:16){
 }
 
 getFFAnalytics_Projections_CSV <- function(fffile, data_result, pos = c("QB", "RB", "WR", "TE", "K", "DST"),
-                                       season = 2020, week = 0, avgType = "robust"){
+                                       season = Year(Sys.Date()), week = 0, avgType = "robust"){
   if(file.exists(fffile)){
     if(file.info(fffile)$mtime >= Sys.Date()){
       ff_projections <- read.csv(fffile,stringsAsFactors = F)
@@ -1126,12 +1169,13 @@ add_player_bye <- function(projection_table){
 }
 
 getFFAnalytics_SrcWeights <- function(){
-  # ffWeights <- c(CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, FFToday = 0.379,
+  # ffWeights <- c(CBS = 0.344, Yahoo = 0.400, FFToday = 0.379,
   #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
   #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
   #NumberFire and FFToday throws error on projections..
-  ffWeights <- c(FantasySharks = 0.327, FantasyData = 0.428, RTSports = 0.330, FFToday = 0.379, CBS = 0.344, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
-                 FantasyPros = 0.220, FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
+  ffWeights <- c(FantasyData = 0.428, ESPN = 0.329, NFL = 0.329, RTSports = 0.330, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
+                 #FantasySharks = 0.327, CBS = 0.344, FantasyPros = 0.220, 
+                 FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
   
   return(ffWeights)
 }
@@ -1257,7 +1301,7 @@ updateMissingIds <- function(ff, allPlayers){
   playersMissing <- ff[!(ff$pId %in% allPlayers$pId),]
   if(nrow(playersMissing)>0){
     ffPlayerIds <- playersMissing$pId
-    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=18
+    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=133
       fPlayer <- playersMissing[x,]
       findMissingPid(fPlayer,allPlayers)
     }))
@@ -1273,10 +1317,13 @@ updateMissingIds <- function(ff, allPlayers){
 
 findMissingPid <- function(fPlayer, allPlayers){
   teamPlayers <- allPlayers %>% filter(team == fPlayer$team)
+  posPlayers <- allPlayers %>% filter(position == fPlayer$pos)
   tPlayer <- findMissingPidALL(fPlayer,allPlayers)
   aPlayer <- findMissingPidALL(fPlayer,teamPlayers)
-  tOrA <- attr(tPlayer,"resMin") < attr(aPlayer,"resMin") 
-  aPlayer <- ifelse(tOrA,tPlayer,aPlayer)
+  pPlayer <- findMissingPidALL(fPlayer,posPlayers)
+  tOrA <- which.min(c(attr(tPlayer,"resMin"),attr(aPlayer,"resMin"),attr(pPlayer,"resMin")))
+  aPlayer <- switch(tOrA,"1"={tPlayer},"2"={aPlayer},"3"={pPlayer})
+  if(attr(aPlayer,"resMin")>12) aPlayer <- fPlayer
   return(aPlayer)
 }
 
@@ -1296,9 +1343,9 @@ findMissingPidALL <- function(fPlayer, teamPlayers){
   return(aPlayer)
 }
 
-loadEspnProjections <- function(){
+loadEspnProjections <- function(sYr=Year(Sys.Date())){
   # Grab the JSON from a known public league; can be any, since grabbing stats not points
-  json_file <- "https://fantasy.espn.com/apis/v3/games/ffl/seasons/2020/segments/0/leagues/8557?view=kona_player_info"
+  json_file <- paste0("https://fantasy.espn.com/apis/v3/games/ffl/seasons/",sYr,"/segments/0/leagues/8557?view=kona_player_info")
   json_data <- jsonlite::fromJSON(json_file, flatten = TRUE)
   
   playerData <- json_data[["players"]]
