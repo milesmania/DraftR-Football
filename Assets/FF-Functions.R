@@ -918,6 +918,7 @@ getLeagueInfo <- function(leagueId){#leagueId=469304291434164224
 
 getTradedPicks <- function(leagueId){
   sPicks <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/traded_picks"), flatten = TRUE)
+  if(length(sPicks)==0) return(NULL)
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
   sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
   sUsers <- sUsers %>% select(user_id,display_name) %>% rename_at(vars(c("user_id","display_name")),funs(c("owner_id","name")))
@@ -961,9 +962,11 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
     sAdd <- sAdds[sA,]
     if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
   }
-  for(sA in nrow(sTrades):1){
-    sAdd <- sTrades[sA,]
-    if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
+  if(nrow(sTrades)>0){
+    for(sA in nrow(sTrades):1){
+      sAdd <- sTrades[sA,]
+      if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
+    }
   }
   latestAdd$player_id <- latestAdd$add
   latestAdd <- latestAdd %>% mutate(transaction=paste0(type," (Wk ",Week,")"))

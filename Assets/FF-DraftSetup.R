@@ -43,21 +43,23 @@ if(file.exists(draftFile)){
     seasonProjection <- leagueProjection(ff,draftForecast,starterPositions)
     
     #Traded Draft Picks
-    tradedPicks <- getTradedPicks(leagueId) %>% filter(season == Year(Sys.Date()))
-    dR <- sapply(1:nrow(tradedPicks),function(x){
-      tPick <- tradedPicks[x,]
-      which(draftResults$Round == tPick$round & draftResults$Team == tPick$prevowner)
-    })
-    if(length(dR)>0){
-      for(tP in dR){#tP=dR[1]
-        dPick <- draftResults[tP,]
-        tPick <- tradedPicks[tradedPicks$round == dPick$Round & tradedPicks$prevowner == dPick$Team,]
-        if(nrow(tPick)==1){
-          draftResults[tP,'Team'] <- tPick$newowner
-          print(paste('Traded Pick in Round ',dPick$Round,'to',tPick$newowner,'from',tPick$prevowner))
+    tradedPicks <- getTradedPicks(leagueId) 
+    if(!is.null(tradedPicks)){
+      tradedPicks <- tradedPicks %>% filter(season == Year(Sys.Date()))
+      dR <- sapply(1:nrow(tradedPicks),function(x){
+        tPick <- tradedPicks[x,]
+        which(draftResults$Round == tPick$round & draftResults$Team == tPick$prevowner)
+      })
+      if(length(dR)>0){
+        for(tP in dR){#tP=dR[1]
+          dPick <- draftResults[tP,]
+          tPick <- tradedPicks[tradedPicks$round == dPick$Round & tradedPicks$prevowner == dPick$Team,]
+          if(nrow(tPick)==1){
+            draftResults[tP,'Team'] <- tPick$newowner
+            print(paste('Traded Pick in Round ',dPick$Round,'to',tPick$newowner,'from',tPick$prevowner))
+          }
         }
       }
-      
     }
     
     save(dfDraft,teams,playersAvail,dfAvail,rosters,availPlayers,playersTaken,draftResults,draftForecast,seasonProjection,playersTakenCount,StartPickTime, file = draftFile) 
