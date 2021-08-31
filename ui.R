@@ -59,7 +59,7 @@ shinyUI(
                       ),hr(),
                       fluidRow(
                         h3("Projected Weekly"), 
-                        sliderInput("leaguePrjWk","Select Week",min=1,max=16,value=1),br(),
+                        sliderInput("leaguePrjWk","Select Week",min=1,max=17,value=1),br(),
                                htmlOutput("leagueProjWeek")
                       )
              ),

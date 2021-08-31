@@ -482,7 +482,7 @@ getSleeperChat <- function(remote_driver, dataURL){
 
 ## Sleeper Projections ####
 #sP <- updateProjectionsFromSleeper(sPlayers,leagueId)
-updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=Year(Sys.Date()),wks=1:16){#leagueId=469304291434164224
+updateProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=Year(Sys.Date()),wks=1:17){#leagueId=469304291434164224
   for(wk in wks){#wk=3
     sPlayers <- getProjectionsFromSleeper(sPlayers,leagueId,sYr,wk)
   } 
@@ -505,7 +505,7 @@ getProjectionsFromSleeper <- function(sPlayers,leagueId,sYr=Year(Sys.Date()),wk=
   return(sP)
 }
 
-leagueProjection <- function(ff,draftForecast,starterPositions,wks=1:16){
+leagueProjection <- function(ff,draftForecast,starterPositions,wks=1:17){
   aPlayers <- ff[,c("pId",colnames(ff)[grep("Wk",colnames(ff))])]
   colnames(aPlayers)[1] <- "Pick"
   dForcast <- draftForecast[,1:6]
@@ -574,7 +574,7 @@ leagueProjection_Kable <- function(lPrj3){
 }
 
 leagueProjection_Rank <- function(lPrj3){
-  lPrj4 <- lPrj3; lPrj4[,2:16] <- apply(lPrj4[,2:16],c(1,2),as.integer)
+  lPrj4 <- lPrj3; lPrj4[,2:17] <- apply(lPrj4[,2:17],c(1,2),as.integer)
   Teams <- lPrj3$Team
   for(i in 2:ncol(lPrj3)){#i=2
     lRnk <- lPrj3[order(lPrj3[,i],decreasing=TRUE),c(1,i)]
@@ -1075,7 +1075,7 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
 }
 
 getFFAnalytics_Weekly <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"),
-                                       season = Year(Sys.Date()), weeks = 1:16, avgType = "robust"){
+                                       season = Year(Sys.Date()), weeks = 1:17, avgType = "robust"){
   src_weights <- getFFAnalytics_SrcWeightsWeekly()
   for(week in weeks){#week=3
     ff_weekly <- getFFAnalytics_Projections(pos = pos, season = season, week = week, src_weights = src_weights, avgType = avgType)
@@ -1083,18 +1083,18 @@ getFFAnalytics_Weekly <- function(pos = c("QB", "RB", "WR", "TE", "K", "DST"),
   return(ff_projections)
 }
 
-getManualProjections_Weekly <- function(ff, weeks = 1:16){
+getManualProjections_Weekly <- function(ff, weeks = 1:17){
   nflSched <- getNFLSchedule()
   
   for(wk in weeks){#wk=1
     pCol <- paste0("PtsWk",formatC(wk, width=2, flag="0"))
     ff[,pCol] <- 0
-    ff[ff$bye != wk,pCol] <- ff[ff$bye != wk, "points"]/16
+    ff[ff$bye != wk,pCol] <- ff[ff$bye != wk, "points"]/17
   }
   return(ff)
 }
 
-getManualProjections_Strength <- function(ff, weeks = 1:16){
+getManualProjections_Strength <- function(ff, weeks = 1:17){
   nflSched <- getNFLSchedule()
   ffOff <- getStrengthOffense(ff)
   ffDef <- getStrengthDefense(ff)
