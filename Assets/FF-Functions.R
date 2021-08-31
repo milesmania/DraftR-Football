@@ -743,6 +743,14 @@ getPlayersFromSleeper <- function(){
   }
   return(sPlayers)
 }
+getRosterIdsFromSleeper <- function(leagueId,sUsers=NULL){
+  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(prevLeagueId)
+  sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
+  sRosterIds <- sRoster %>% select(roster_id,owner_id)
+  sRosterIds <- left_join(sRosterIds,sUsers, by=c("owner_id"="user_id")) %>% rename(OwnerName = display_name)
+
+  return(sRosterIds)
+}
 
 getRostersFromSleeper <- function(leagueId,pFileName=NULL,sPlayers=NULL){
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
@@ -777,12 +785,18 @@ getUsersFromSleeperOld <- function(leagueId,draftId){
   })
   return(draftOrder)
 }
-getUsersFromSleeper <- function(leagueId,draftId){
+getUserIdsFromSleeper <- function(leagueId){
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
   if(length(sUsers)==0) return(NULL)
+  sUsers <- sUsers[,c('user_id','display_name')]
+  
+  return(sUsers)
+}
+getUsersFromSleeper <- function(leagueId,draftId){
+  sUsers <- getUserIdsFromSleeper(leagueId)
+  if(is.null(sUsers) | length(sUsers)==0) return(NULL)
   dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
   nTeams <- dDraft[["settings"]]$teams
-  sUsers <- sUsers[,c('user_id','display_name')]
   nDraftOrder <- unlist(dDraft[["draft_order"]])
   if(length(nDraftOrder)==nTeams & !any(!(sUsers$user_id %in% names(nDraftOrder)))){
     sUsers$draft_order <- sapply(1:nrow(sUsers),function(x){#x=1
@@ -843,7 +857,7 @@ getLeagueDraftsFromSleeper <- function(leagueId){#leagueIds<-unique(sLeagues$lea
   return(sDrafts)
 }
 
-getLeagueTransFromSleeper <- function(leagueId, wks = 0:20){#leagueIds<-unique(sLeagues$league_id)
+getLeagueTransFromSleeper <- function(leagueId, wks = 0:20,sUsers=NULL,sPlayers=NULL){#leagueIds<-unique(sLeagues$league_id)
   sTrans <- NULL
   for(w in wks){#w=2
     sTran <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/transactions/",w), flatten = TRUE)
@@ -889,6 +903,27 @@ getLeagueTransFromSleeper <- function(leagueId, wks = 0:20){#leagueIds<-unique(s
       }
     } 
   }
+  if(!is.null(sTrans)) sTrans <- getLeagueTransUsersPlayers(sTrans,sUsers=sUsers,sPlayers=sPlayers)
+  return(sTrans)
+}
+
+getLeagueTransUsersPlayers <- function(sTrans,sUsers=NULL,sPlayers=NULL, sRosterIds=NULL){
+  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(prevLeagueId)
+  if(is.null(sPlayers)) sPlayers <- updatePlayersFromSleeper()
+  if(is.null(sRosterIds)) sRosterIds <- getRosterIdsFromSleeper(prevLeagueId,sUsers=sUsers)
+  sTrans <- left_join(sTrans,sUsers, by=c("creator"="user_id")) %>% rename(CreatorName = display_name)
+  sTrans$rosterIds <- sapply(1:nrow(sTrans),function(x){ #x=37
+    rIds <- unlist(sTrans[x,'roster_ids'])
+    paste0(rIds,collapse = ",")
+  })
+  sTrans$RosterNames <- sTrans$rosterIds
+  for(sR in nrow(sRosterIds):1){
+    sRid <- sRosterIds[sR,'roster_id']
+    sRname <- sRosterIds[sR,'OwnerName']
+    sTrans$RosterNames <- gsub(sRid,sRname,sTrans$RosterNames)
+  }
+  sTrans <- left_join(sTrans,sPlayers[,c("player_id","pId")], by=c("add"="player_id")) %>% rename(AddPlayer = pId)
+  sTrans <- left_join(sTrans,sPlayers[,c("player_id","pId")], by=c("drop"="player_id")) %>% rename(DropPlayer = pId)
   return(sTrans)
 }
 
@@ -947,16 +982,20 @@ getTradedPicks <- function(leagueId){
 #sKeepers <- getKeeperDraftRound(leagueId = leagueId,ff,writeFile="Data/Keepers-2021.csv", allPlayers=allPlayers)
 getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = NULL, allPlayers = NULL){
   #leagueId <- "469304291434164224"
-  if(is.null(draftId)) draftId <- getLeagueDraftsFromSleeper(leagueId)$draft_id
+  leagueInfo <- getLeagueInfo(leagueId)
+  prevLeagueId <- leagueInfo$previous_league_id
+  if(is.null(draftId)) draftId <- getLeagueDraftsFromSleeper(prevLeagueId)$draft_id
   sDraft <- getDraftFromSleeper(draftId, allPlayers)
   sRoster <- getRostersFromSleeper(leagueId)
-  sTrans <- getLeagueTransFromSleeper(leagueId)
+  sUsers <- getUserIdsFromSleeper(prevLeagueId)
   sPlayers <- updatePlayersFromSleeper()
+  sRosterIds <- getRosterIdsFromSleeper(prevLeagueId,sUsers=sUsers)
+  sTrans <- getLeagueTransFromSleeper(prevLeagueId,sUsers=sUsers,sPlayers=sPlayers)
   sDrafted <- left_join(sRoster,sDraft[,c("player_id","round")], by=c("player_id"))
-  sAdds <- sTrans %>% filter(!grepl("trade|commiss",type)) %>% select(type,Week,add,drop)
-  sCommiss <- sTrans %>% filter(grepl("commiss",type)) %>% select(type,Week,add,drop) %>% filter(!(add %in% sAdds$add))
-  if(nrow(sCommiss)>0) sAdds <- rbind(sAdds,sCommiss); sAdds <- sAdds[order(sAdds$Week),]
-  sTrades <- sTrans %>% filter(type == "trade") %>% select(type,Week,add,drop)
+  sTransAbb <- sTrans %>% select(type,Week,add,drop,CreatorName,RosterNames,AddPlayer,DropPlayer)
+  sAdds <- sTransAbb %>% filter(!grepl("trade|commiss",type))
+  sCommiss <- sTransAbb %>% filter(grepl("commiss",type)) %>% filter(!(add %in% sAdds$add))
+  sTrades <- sTransAbb %>% filter(type == "trade")
   latestAdd <- sAdds[0,]
   for(sA in nrow(sAdds):1){
     sAdd <- sAdds[sA,]
@@ -965,6 +1004,12 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
   if(nrow(sTrades)>0){
     for(sA in nrow(sTrades):1){
       sAdd <- sTrades[sA,]
+      if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
+    }
+  }
+  if(nrow(sCommiss)>0){
+    for(sA in nrow(sCommiss):1){
+      sAdd <- sCommiss[sA,]
       if(!(sAdd$add %in% latestAdd$add)) latestAdd[nrow(latestAdd)+1,] <- sAdd
     }
   }
@@ -979,7 +1024,12 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
   if(!is.null(ff)){
     sKeepers <- left_join(sKeepers,ff[,c("pId",colnames(ff)[grepl("adp",colnames(ff))])],by="pId")
   }
-  if(!is.null(writeFile)) write.csv(sKeepers,file=writeFile)
+  if(!is.null(writeFile)){
+    sKeepers <- sKeepers %>% arrange(user,adp)
+    xlList <- list("KeepersRaw"=sKeepers,"PrevDraft"=sDraft,"CurrentRoster"=sRoster,"Adds"=sAdds,
+                   "Trades"=sTrades,"Commiss"=sCommiss,"TransAll"=sTrans)
+    openxlsx::write.xlsx(x=xlList,file=writeFile, overwrite = TRUE, asTable=TRUE, colWidths = "auto")
+  }
   return(sKeepers)
 }
 
