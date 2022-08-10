@@ -5,6 +5,7 @@ library(DescTools)
 
 library(XML)
 library(dplyr)
+library(purrr)
 
 library(ggplot2)
 library(ggrepel)
@@ -20,6 +21,9 @@ if(!("ffanalytics" %in% installed.packages())){
 }
 
 library(ffanalytics)
+
+#library(nflfastR)
+#nflTeams <- teams_colors_logos
 
 DraftYear <- Year(Sys.Date())
 

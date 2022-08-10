@@ -182,7 +182,7 @@ draftTablePopulate <- function(dfDraft,draftForecast){
   dFCast <- draftForecast %>% select(Overall,Round,Team,Slot,Pick,team,pos,Selected,ForcastComment) %>% unique()
   
   dComments <- matrix(data=NA,nrow=nrow(dTable),ncol=ncol(dTable))
-  for(j in 1:ncol(dTable)){ #j=4
+  for(j in 1:ncol(dTable)){ #j=4#j=7
     dColTeam <- colnames(dTable)[j]
     dFCastCol <- dFCast[dFCast$Slot==j,]
     dTable[,j] <- dFCastCol$Pick
@@ -211,7 +211,7 @@ draftTablePopulate <- function(dfDraft,draftForecast){
                                            #,popover = spec_popover(content = dFCastCol$Selected, trigger = "click", position = "auto")
     )
     #dTable[grepl("RB",dFCastCol$Pick),j] <- dTable[grepl("RB",dFCastCol$Pick),j] %>% cell_spec(background = "blue")
-    dComments[dFCast[dFCast$Team==colnames(dTable)[j],"Selected"]=="forecast",j] <- "Forecast"
+    #dComments[dFCast[dFCast$Team==colnames(dTable)[j],"Selected"] == "forecast",j] <- "Forecast"
   }
   
   dTableKable <- kable(dTable,"html", escape = F, row.names = T) %>% kable_styling("striped", full_width = T)
@@ -436,7 +436,7 @@ updateStatNames <- function(ff){
   oldnamesToReplace <- (oldnames %in% colnames(ff))
   if(any(oldnamesToReplace)){
     oldnames <- oldnames[oldnamesToReplace]; newnames <- newnames[oldnamesToReplace]
-    ff <- ff %>% rename_at(vars(oldnames), ~newnames)
+    ff <- ff %>% rename_at(vars(all_of(oldnames)), ~newnames)
   }
   return(ff)
 }
@@ -700,9 +700,10 @@ getPlayersFromSleeper <- function(){
     nflColNames <- names(nflPlayers[[nR]])
     nflPlayerCols <- c(nflPlayerCols, nflColNames[!(nflColNames %in% nflPlayerCols)])
   }
-  pL <- unlist(nflPlayers[["4034"]])
-  pL1 <- unlist(nflPlayers[["3198"]])
-  pL <- rbind(pL,pL1)
+  pLC <- unlist(nflPlayers[["4034"]]) #Christian McCaffrey
+  pLD <- unlist(nflPlayers[["3198"]]) #Derrick Henry
+  pLJ <- unlist(nflPlayers[["7526"]]) #Jaylen Waddle
+  pL <- rbind(pLC,pLD)
   pL2 <- as.data.frame(pL, stringsAsFactors=FALSE)
   for(i in 1:ncol(pL2)){#i=1
     if(!is.na(suppressWarnings(any(as.numeric(pL2[,i]))))) pL2[,i] <- as.numeric(pL2[,i])
@@ -744,7 +745,7 @@ getPlayersFromSleeper <- function(){
   return(sPlayers)
 }
 getRosterIdsFromSleeper <- function(leagueId,sUsers=NULL){
-  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(prevLeagueId)
+  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(leagueId)
   sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
   sRosterIds <- sRoster %>% select(roster_id,owner_id)
   sRosterIds <- left_join(sRosterIds,sUsers, by=c("owner_id"="user_id")) %>% rename(OwnerName = display_name)
@@ -797,12 +798,17 @@ getUsersFromSleeper <- function(leagueId,draftId){
   if(is.null(sUsers) | length(sUsers)==0) return(NULL)
   dDraft <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/draft/",draftId), flatten = TRUE)
   nTeams <- dDraft[["settings"]]$teams
+  nSlots <- 1:nTeams
   nDraftOrder <- unlist(dDraft[["draft_order"]])
-  if(length(nDraftOrder)==nTeams & !any(!(sUsers$user_id %in% names(nDraftOrder)))){
+  if(length(nDraftOrder)>0){
     sUsers$draft_order <- sapply(1:nrow(sUsers),function(x){#x=1
       uId <- sUsers[x,'user_id']
-      draftSpot <- nDraftOrder[names(nDraftOrder)==uId]
+      if(!(uId %in% names(nDraftOrder))) NA else nDraftOrder[names(nDraftOrder)==uId]
     })
+    if(any(is.na(sUsers$draft_order))){
+      nSlotsBlank <- nSlots[!(nSlots %in% sUsers$draft_order)]
+      sUsers[is.na(sUsers$draft_order),'draft_order'] <- nSlotsBlank
+    } 
     draftOrder <- sUsers[order(sUsers$draft_order),'display_name'] 
   }else{
     draftOrder <- sapply(1:nTeams,function(x){#x=1
@@ -903,14 +909,14 @@ getLeagueTransFromSleeper <- function(leagueId, wks = 0:20,sUsers=NULL,sPlayers=
       }
     } 
   }
-  if(!is.null(sTrans)) sTrans <- getLeagueTransUsersPlayers(sTrans,sUsers=sUsers,sPlayers=sPlayers)
+  if(!is.null(sTrans)) sTrans <- getLeagueTransUsersPlayers(sTrans,leagueId,sUsers=sUsers,sPlayers=sPlayers)
   return(sTrans)
 }
 
-getLeagueTransUsersPlayers <- function(sTrans,sUsers=NULL,sPlayers=NULL, sRosterIds=NULL){
-  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(prevLeagueId)
+getLeagueTransUsersPlayers <- function(sTrans,leagueId,sUsers=NULL,sPlayers=NULL, sRosterIds=NULL){
+  if(is.null(sUsers)) sUsers <- getUserIdsFromSleeper(leagueId)
   if(is.null(sPlayers)) sPlayers <- updatePlayersFromSleeper()
-  if(is.null(sRosterIds)) sRosterIds <- getRosterIdsFromSleeper(prevLeagueId,sUsers=sUsers)
+  if(is.null(sRosterIds)) sRosterIds <- getRosterIdsFromSleeper(leagueId,sUsers=sUsers)
   sTrans <- left_join(sTrans,sUsers, by=c("creator"="user_id")) %>% rename(CreatorName = display_name)
   sTrans$rosterIds <- sapply(1:nrow(sTrans),function(x){ #x=37
     rIds <- unlist(sTrans[x,'roster_ids'])
@@ -962,6 +968,7 @@ getTradedPicks <- function(leagueId){
     inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("prevowner"))), by=c('previous_owner_id'='roster_id')) %>%  
     inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("newowner"))), by=c('owner_id'='roster_id'))
   rPicks <- rPick %>% select(season,round,name,newowner,prevowner) %>% arrange(season,round)
+  rPicks$prevowner <- rPicks$name
   # rTrades <- rPicks[0,]; rTrades$round.trade <- integer()
   # for(nR in 1:nrow(rPicks)){#nR=9
   #   rTrade <- rPicks[nR,]
@@ -1026,8 +1033,8 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
   }
   if(!is.null(writeFile)){
     sKeepers <- sKeepers %>% arrange(user,adp)
-    xlList <- list("KeepersRaw"=sKeepers,"PrevDraft"=sDraft,"CurrentRoster"=sRoster,"Adds"=sAdds,
-                   "Trades"=sTrades,"Commiss"=sCommiss,"TransAll"=sTrans)
+    xlList <- list("KeepersRaw"=sKeepers,"PrevDraft"=sDraft,"CurrentRoster"=sRoster,"Adds"=sAdds,#"Commiss"=sCommiss,
+                   "Trades"=sTrades,"TransAll"=sTrans)
     openxlsx::write.xlsx(x=xlList,file=writeFile, overwrite = TRUE, asTable=TRUE, colWidths = "auto")
   }
   return(sKeepers)
@@ -1035,7 +1042,7 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
 
 ## ffanalytics Projections ####
 getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
-                                       season = 2021, week = 0, avgType = "robust"){
+                                       season = Year(Sys.Date()), week = 0, avgType = "robust"){
   if(file.exists(ffDataFile)){
     if(file.info(ffDataFile)$mtime >= Sys.Date()){
       load(ffDataFile)
@@ -1050,7 +1057,7 @@ getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K
 }
 #rankRB <- rawData[["RB"]]
 getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
-                                     season = 2021, week = 0, avgType = "robust"){
+                                     season = Year(Sys.Date()), week = 0, avgType = "robust"){
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
@@ -1058,10 +1065,10 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
   #ffRawRB <- data_result[["RB"]]
   ff_projections_all <- projections_table(data_result = data_result, scoring_rules = scoring_rules, src_weights = src_weights,
                                       vor_baseline = vor_baseline, tier_thresholds = tier_thresholds)
-  ff_projections <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
-  ff_projections <- ff_projections %>% add_ecr_override() %>% #add_ecr() %>% 
-    add_risk() %>%
-    add_adp() %>% #add_adpaav_override(type="ADP") %>% 
+  projection_table <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
+  ff_projections <- projection_table %>% add_ecr_override() %>% #add_ecr() %>% 
+    add_risk_override() %>%
+    add_adp() %>% #add_adpaav_override(type="ADP") %>%
     add_aav() #add_adpaav_override(type="AAV")
   ff_projections <- ff_projections %>% add_player_info_override()
   ff_projections <- ff_projections %>% add_player_bye()
@@ -1142,7 +1149,7 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
             call. = FALSE)
     return(projection_table)
   }
-  adp_tbl <- get_adp(sources, type = type)
+  adp_tbl <- get_adp(sources, metric = type)
   varname <- paste0(tolower(type),"_diff")
   projection_table <- left_join(projection_table, adp_tbl, 
                                 by = "id") %>% mutate(!!varname := rank - Avg)
@@ -1156,18 +1163,22 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
 add_adp_fd <-function(ff,allPlayers){
   adp_fd_url <- 'https://fantasydata.com/NFL_Adp/ADP_Read'
   adp_fd_raw <- jsonlite::fromJSON(adp_fd_url, flatten = TRUE)
-  adp_fd <- adp_fd_raw[["Data"]] %>% select(PlayerID,AverageDraftPosition)
-  adp_fd <- adp_fd %>% inner_join(allPlayers[,c("fantasy_data_id","pId")], by=c("PlayerID" = "fantasy_data_id")) %>% select(pId,AverageDraftPosition)
-  #add defense adp
-  adp_fd_csv <- 'Data/fantasy-football-adp-rankings.csv'
-  if(file.exists(adp_fd_csv)){
-    adp_fd_csv_raw <- read.csv(adp_fd_csv,stringsAsFactors = F)
-    adp_def <- adp_fd_csv_raw %>% filter(Position == "DST") %>% select("Team","AverageDraftPosition")
-    adp_def <- adp_def %>% inner_join(allPlayers[allPlayers$position=="DST",c("team","pId")], by=c("Team" = "team")) %>% select(pId,AverageDraftPosition)
-    adp_fd <- rbind(adp_fd,adp_def) %>% arrange(AverageDraftPosition)
-  }
+  adp_fd_data <- adp_fd_raw[["Data"]]
+  #adp_fd_ids <- adp_fd_data %>% select(PlayerID,AverageDraftPosition)
+  adp_fd_ids <- adp_fd_data %>% select(PlayerID,starts_with('AverageDraftPosition'),ends_with('ADP'))
+  adp_fd <- adp_fd_ids %>% inner_join(allPlayers[,c("fantasy_data_id","pId")], by=c("PlayerID" = "fantasy_data_id")) %>% 
+    select(pId,AverageDraftPosition)
+  #add defense adp if it doesn't exist
+  # adp_fd_csv <- 'Data/fantasy-football-adp-rankings.csv'
+  # if(file.exists(adp_fd_csv)){
+  #   adp_fd_csv_raw <- read.csv(adp_fd_csv,stringsAsFactors = F)
+  #   adp_def <- adp_fd_csv_raw %>% filter(Position == "DST") %>% select("Team","AverageDraftPosition")
+  #   adp_def <- adp_def %>% inner_join(allPlayers[allPlayers$position=="DST",c("team","pId")], by=c("Team" = "team")) %>% select(pId,AverageDraftPosition)
+  #   adp_fd <- rbind(adp_fd,adp_def) %>% arrange(AverageDraftPosition)
+  # }
   ff2 <- ff %>% left_join(adp_fd[,c("pId","AverageDraftPosition")], by='pId')
   ff2 <- ff2 %>% rename_at(vars(c("adp","adp_diff","AverageDraftPosition")),funs(c("adp_ff","adp_ff_diff","adp"))) %>% relocate(adp, .before = adp_ff)
+  ff2 <- ff2 %>% mutate(adp = if_else(is.na(adp),adp_ff,adp))
   ff2 <- ff2 %>% mutate(adp_diff = rank - adp) %>% relocate(adp_diff, .after = adp)
   return(ff2)
 }
@@ -1191,9 +1202,9 @@ add_ecr_override <- function (projection_table)
     projection_table <- left_join(projection_table, ecr_overall, 
                                   by = "id")
   }
-  projection_table %>% `attr<-`(which = "season", season) %>% 
-    `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", 
-                                                lg_type)
+  projection_table <- projection_table %>% `attr<-`(which = "season", season) %>% 
+    `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
+  return(projection_table)
 }
 add_player_info_override <- function (projection_table) 
 {
@@ -1204,6 +1215,46 @@ add_player_info_override <- function (projection_table)
          age, exp) %>% inner_join(projection_table, by = c("id" = "id", "position" = "pos")) %>% 
     `attr<-`(which = "season", season) %>% `attr<-`(which = "week", 
                                                     week) %>% `attr<-`(which = "lg_type", lg_type)
+}
+
+#' Risk calculation based on two variables
+#'
+#' Calculation of risk is done by scaling the standard deviation variables
+#' passed and averaging them before returning a measure with mean 5 and standard
+#' deviation of 2
+calculate_risk <- function(var1, var2){
+  var1 <- as.numeric(var1)
+  var2 <- as.numeric(var2)
+  Z_var1 <- scale(var1)
+  Z_var2 <- scale(var2)
+  
+  Z_var1[is.na(Z_var1)] <- Z_var2[is.na(Z_var1)]
+  Z_var2[is.na(Z_var2)] <- Z_var1[is.na(Z_var2)]
+  
+  risk_value <- 2 * scale(rowMeans(data.frame(Z_var1, Z_var2), na.rm=TRUE)) + 5
+  
+  c(risk_value)
+  
+}
+
+#' Add calculated risk to the table
+#'
+#' Calculation of risk is done by scaling the standard deviation variables
+#' passed and averaging them before returning a measure with mean 5 and standard
+#' deviation of 2
+add_risk_override <- function(projection_table){
+  
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week")
+  
+  projection_table %>%
+    dplyr::group_by(pos) %>%
+    dplyr::mutate(risk = calculate_risk(sd_pts, sd_ecr)) %>%
+    dplyr::ungroup() %>%
+    `attr<-`(which = "season", season) %>%
+    `attr<-`(which = "week", week) %>%
+    `attr<-`(which = "lg_type", lg_type)
 }
 
 add_player_bye <- function(projection_table){
@@ -1226,8 +1277,8 @@ getFFAnalytics_SrcWeights <- function(){
   #                NumberFire = 0.322, FantasyPros = 0.000, FantasySharks = 0.327, FantasyFootballNerd = 0.000,
   #                Walterfootball = 0.281, RTSports = 0.330, FantasyData = 0.428, FleaFlicker = 0.428)
   #NumberFire and FFToday throws error on projections..
-  ffWeights <- c(FantasyData = 0.428, ESPN = 0.329, NFL = 0.329, RTSports = 0.330, FFToday = 0.379, Yahoo = 0.400, ESPN = 0.329, NFL = 0.329, 
-                 #FantasySharks = 0.327, CBS = 0.344, FantasyPros = 0.220, 
+  ffWeights <- c(FantasyData = 0.428, ESPN = 0.329, NFL = 0.329, RTSports = 0.330, FFToday = 0.379, Yahoo = 0.400, CBS = 0.344, 
+                 #FantasySharks = 0.327, FantasyPros = 0.220, 
                  FantasyFootballNerd = 0.220, Walterfootball = 0.281, FleaFlicker = 0.428)
   
   return(ffWeights)
@@ -1354,9 +1405,9 @@ updateMissingIds <- function(ff, allPlayers){
   playersMissing <- ff[!(ff$pId %in% allPlayers$pId),]
   if(nrow(playersMissing)>0){
     ffPlayerIds <- playersMissing$pId
-    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=133
+    allPlayerIds <- unlist(sapply(1:nrow(playersMissing),function(x){#x=11#x=6
       fPlayer <- playersMissing[x,]
-      findMissingPid(fPlayer,allPlayers)
+      pId <- findMissingPid(fPlayer,allPlayers)
     }))
     names(allPlayerIds) <- ffPlayerIds
     for(aX in 1:length(allPlayerIds)){
@@ -1371,26 +1422,33 @@ updateMissingIds <- function(ff, allPlayers){
 findMissingPid <- function(fPlayer, allPlayers){
   teamPlayers <- allPlayers %>% filter(team == fPlayer$team)
   posPlayers <- allPlayers %>% filter(position == fPlayer$pos)
-  tPlayer <- findMissingPidALL(fPlayer,allPlayers)
-  aPlayer <- findMissingPidALL(fPlayer,teamPlayers)
-  pPlayer <- findMissingPidALL(fPlayer,posPlayers)
-  tOrA <- which.min(c(attr(tPlayer,"resMin"),attr(aPlayer,"resMin"),attr(pPlayer,"resMin")))
-  aPlayer <- switch(tOrA,"1"={tPlayer},"2"={aPlayer},"3"={pPlayer})
-  if(attr(aPlayer,"resMin")>12) aPlayer <- fPlayer
+  playerAll <- findMissingPidALL(fPlayer,teamPlayers=allPlayers)
+  playerTeam <- findMissingPidALL(fPlayer,teamPlayers)
+  playerPos <- findMissingPidALL(fPlayer,posPlayers)
+  tOrA <- which.min(c(attr(playerPos,"resMin"),attr(playerTeam,"resMin"),attr(playerAll,"resMin")))
+  aPlayer <- switch(tOrA,"1"={playerPos},"2"={playerTeam},"3"={playerAll})
+  if(attr(aPlayer,"resMin")>12) aPlayer <- fPlayer$pId
   return(aPlayer)
 }
 
 findMissingPidALL <- function(fPlayer, teamPlayers){
   strFirstNames <- teamPlayers %>% select(first_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
   strLastNames <- teamPlayers %>% select(last_name) %>% unlist() %>% tm::removePunctuation() %>% tolower()
+  strPos <- teamPlayers %>% select(fantasy_positions) %>% unlist() %>% tm::removePunctuation() %>% tolower() %>% replace(is.na(.),"NONE")
+  strTeam <- teamPlayers %>% select(team) %>% unlist() %>% tm::removePunctuation() %>% tolower() %>% replace(is.na(.),"NONE")
   fPlayerFirst <- fPlayer$first_name %>% tm::removePunctuation() %>% tolower()
   fPlayerLast <- fPlayer$last_name %>% tm::removePunctuation() %>% tolower()
+  fPlayerPos <- fPlayer$pos %>% tm::removePunctuation() %>% tolower()
+  fPlayerTeam <- fPlayer$team %>% tm::removePunctuation() %>% tolower()
   resFirst <- stringdist::stringdistmatrix(strFirstNames,fPlayerFirst,method = 'lcs')[,1]
   resLast <- stringdist::stringdistmatrix(strLastNames,fPlayerLast,method = 'lcs')[,1]
-  resName <- resFirst + resLast
-  resMin <- resName %>% min()
-  aPlayer <- teamPlayers[which(resName == resMin),'pId']
-  aPlayer <- head(aPlayer[!is.na(aPlayer)],1)
+  resPos <- stringdist::stringdistmatrix(strPos,fPlayerPos,method = 'lcs')[,1]
+  resTeam <- stringdist::stringdistmatrix(strTeam,fPlayerTeam,method = 'lcs')[,1]
+  resName <- resFirst + resLast + resPos + resTeam
+  resMin <- resName %>% min(na.rm = TRUE)
+  teamPlayers <- teamPlayers %>% mutate(resName = resName, resLast = resLast, resFirst = resFirst, resPos = resPos, resTeam = resTeam)
+  aPlayers <- teamPlayers %>% filter(!is.na(pId) & resName <= resMin+10) %>% arrange(resName, resLast, resTeam, resPos, resFirst)
+  aPlayer <- aPlayers %>% select(pId) %>% head(1)
   if(length(aPlayer)==0) aPlayer <- NA
   attr(aPlayer,"resMin") <- resMin
   return(aPlayer)
