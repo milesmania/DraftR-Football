@@ -151,7 +151,7 @@ nextAvailForecast <- function(draftResults,pAvail,sTeam, ...){
     testForecast <- forecastDraft(tF,ff) %>% filter(Team == sTeam)
     tLprj <- leagueProjection(ff,testForecast,starterPositions)
     tLprjTable <- leagueProjection_Table(tLprj)
-    tLprjTeam <- tLprjTable %>% filter(Team == sTeam) %>% rename_at(vars("Team"),funs(c("Pick")))
+    tLprjTeam <- tLprjTable %>% filter(Team == sTeam) %>% rename(Pick=Team)
     tLprjTeam$Pick <- pAvail[pI,'pId']
     if(is.null(nextAvail)){
       nextAvail <- tLprjTeam
@@ -416,6 +416,7 @@ correctSleeperNames <- function(sPlayers){
 }
 
 getNFLSchedule <- function(){
+  #download here: https://fftoday.com/nfl/schedule.php?o=3
   nflSchedFile <- "Data/NFL-Schedule.csv"
   nflSched <- read.csv(nflSchedFile,stringsAsFactors = F)
   colnames(nflSched)[2:18] <- sapply(1:17,function(x) paste0("Wk",formatC(x, width=2, flag="0")) )
@@ -962,11 +963,11 @@ getTradedPicks <- function(leagueId){
   if(length(sPicks)==0) return(NULL)
   sUsers <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/users"), flatten = TRUE)
   sRoster <- jsonlite::fromJSON(paste0("https://api.sleeper.app/v1/league/",leagueId,"/rosters"), flatten = TRUE)
-  sUsers <- sUsers %>% select(user_id,display_name) %>% rename_at(vars(c("user_id","display_name")),funs(c("owner_id","name")))
+  sUsers <- sUsers %>% select(user_id,display_name) %>% rename(owner_id=user_id,name=display_name)
   sRoster <- sRoster %>% select(roster_id,owner_id) %>% inner_join(sUsers, by='owner_id') %>% select(roster_id,name)
   rPick <- sPicks %>% inner_join(sRoster,by='roster_id') %>% 
-    inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("prevowner"))), by=c('previous_owner_id'='roster_id')) %>%  
-    inner_join(sRoster %>% rename_at(vars(c("name")),funs(c("newowner"))), by=c('owner_id'='roster_id'))
+    inner_join(sRoster %>% rename(prevowner=name), by=c('previous_owner_id'='roster_id')) %>%  
+    inner_join(sRoster %>% rename(newowner=name), by=c('owner_id'='roster_id'))
   rPicks <- rPick %>% select(season,round,name,newowner,prevowner) %>% arrange(season,round)
   rPicks$prevowner <- rPicks$name
   # rTrades <- rPicks[0,]; rTrades$round.trade <- integer()
@@ -1033,6 +1034,7 @@ getKeeperDraftRound <- function(leagueId, ff=NULL, draftId = NULL, writeFile = N
   }
   if(!is.null(writeFile)){
     sKeepers <- sKeepers %>% arrange(user,adp)
+    sTrans <- sTrans %>% mutate(across(where(is.list),as.character))
     xlList <- list("KeepersRaw"=sKeepers,"PrevDraft"=sDraft,"CurrentRoster"=sRoster,"Adds"=sAdds,#"Commiss"=sCommiss,
                    "Trades"=sTrades,"TransAll"=sTrans)
     openxlsx::write.xlsx(x=xlList,file=writeFile, overwrite = TRUE, asTable=TRUE, colWidths = "auto")
@@ -1059,6 +1061,7 @@ getFFAnalytics_RawData <- function(ffDataFile,pos = c("QB", "RB", "WR", "TE", "K
 getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE", "K", "DST"), src_weights = NULL,
                                      season = Year(Sys.Date()), week = 0, avgType = "robust"){
   if(is.null(src_weights)) src_weights <- getFFAnalytics_SrcWeights()
+  adp_Sources <- c("RTS", "CBS", "Yahoo","NFL", "FFC") #override to remove MFL due to an error..., "MFL")
   scoring_rules <- getFFAnalytics_ScoringSettings()
   tier_thresholds <- getFFAnalytics_TierThreshold()
   vor_baseline <- getFFAnalytics_VorBaseline()
@@ -1067,9 +1070,9 @@ getFFAnalytics_Projections <- function(data_result,pos = c("QB", "RB", "WR", "TE
                                       vor_baseline = vor_baseline, tier_thresholds = tier_thresholds)
   projection_table <- ff_projections_all %>% filter(avg_type == avgType) %>% select(!avg_type) #projection_table <- ff_projections
   ff_projections <- projection_table %>% add_ecr_override() %>% #add_ecr() %>% 
-    add_risk_override() %>%
-    add_adp() %>% #add_adpaav_override(type="ADP") %>%
-    add_aav() #add_adpaav_override(type="AAV")
+    add_uncertainty() %>% rename(risk = uncertainty) %>% #add_risk_override() %>%
+    add_adp(sources = adp_Sources) %>% #add_adpaav_override(type="ADP") %>%
+    add_aav(sources = adp_Sources) #add_adpaav_override(type="AAV")
   ff_projections <- ff_projections %>% add_player_info_override()
   ff_projections <- ff_projections %>% add_player_bye()
   ff_projections <- ff_projections %>% mutate(name = paste(first_name,last_name))
@@ -1160,6 +1163,159 @@ add_adpaav_override <- function(projection_table, sources = c("RTS", "CBS", "ESP
     `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", lg_type)
 }
 
+add_adp_test <- function (projection_table, sources = c("RTS", "CBS", "Yahoo", 
+                                                        "NFL", "FFC", "MFL")) 
+{
+  sources <- match.arg(sources, c("RTS", "CBS", "Yahoo", "NFL", 
+                                  "FFC", "MFL"), several.ok = TRUE)
+  lg_type <- attr(projection_table, "lg_type")
+  season <- attr(projection_table, "season")
+  week <- attr(projection_table, "week")
+  if (week != 0) {
+    warning("ADP data is not available for weekly data", 
+            call. = FALSE)
+    return(projection_table)
+  }
+  message("Scraping ADP data")
+  adp_tbl <- get_adp_test(sources, metric = "adp")
+  if (ncol(adp_tbl) == 2) {
+    names(adp_tbl)[2] = "adp"
+  }
+  else {
+    adp_tbl = adp_tbl %>% dplyr::select(id, adp = adp_avg, 
+                                        adp_sd)
+  }
+  projection_table <- left_join(projection_table, adp_tbl, 
+                                by = "id") %>% dplyr::mutate(adp_diff = rank - adp)
+  projection_table %>% `attr<-`(which = "season", season) %>% 
+    `attr<-`(which = "week", week) %>% `attr<-`(which = "lg_type", 
+                                                lg_type)
+}
+
+get_adp_test <- function (sources = c("RTS", "CBS", "Yahoo", "NFL", "FFC", "MFL"), 
+          metric = c("adp", "aav")) 
+{
+  metric <- match.arg(tolower(metric), c("adp", "aav"))
+  sources <- match.arg(sources, c("RTS", "CBS", "Yahoo", "NFL", 
+                                  "FFC", "MFL"), several.ok = TRUE)
+  is_aav = (metric == "aav")
+  if (is_aav) {
+    sources = setdiff(sources, c("CBS", "FFC", "NFL"))
+  }
+  draft_l = lapply(tolower(sources), function(source) { #source <- sources[2]
+    df = match.fun(paste0(source, "_draft"))(metric = metric)
+    df = mfl_draft(metric = metric)
+    df = df[c("id", metric)]
+    names(df)[2] = paste0(metric, "_", source)
+    df[!is.na(df$id), ]
+  })
+  draft_l = Filter(Negate(is.null), draft_l)
+  if (length(draft_l) == 0) {
+    return(NULL)
+  }
+  if (length(draft_l) > 1) {
+    out = Reduce(function(x, y) dplyr::full_join(x, y, "id"), 
+                 draft_l)
+    out[[paste0(metric, "_avg")]] = rowMeans(out[-1], na.rm = TRUE)
+    out[[paste0(metric, "_sd")]] = row_sd(out[-1], na.rm = TRUE)
+    if (is_aav) {
+      out = out[order(out[[paste0(metric, "_avg")]], decreasing = TRUE), 
+      ]
+    }
+    else {
+      out = out[order(out[[paste0(metric, "_avg")]]), 
+      ]
+    }
+  }
+  else {
+    out = draft_l[[1]]
+  }
+  out
+}
+
+mfl_draft_test = function(metric = c("adp", "aav"),
+                     period = c("RECENT", "ALL", "DRAFT", "JUNE", "JULY", "AUG1", "AUG15", "START", "MID", "PLAYOFF"),
+                     format = c("All Leagues", "PPR", "Std"),
+                     nteams = c(12, 8, 10, 14, 16),
+                     is_keeper = c("No", "Keeper", "Rookie Only"),
+                     is_mock = c("No", "Mock", "All Leagues"),
+                     cutoff = 10) {
+  
+  # Todo: clean up the way arguments are input
+  metric = match.arg(tolower(metric), c("adp", "aav"))
+  is_aav = (metric == "aav")
+  
+  period = match.arg(toupper(period), c("RECENT", "ALL", "DRAFT", "JUNE", "JULY", "AUG1", "AUG15", "START", "MID", "PLAYOFF"))
+  fcount = match.arg(as.character(nteams), as.character(c(12, 8, 10, 14, 16)))
+  format = match.arg(as.character(format), c("All Leagues", "PPR", "Std"))
+  is_keeper = match.arg(is_keeper, c("No", "Keeper", "Rookie Only"), several.ok = TRUE)
+  is_mock = match.arg(as.character(is_mock), c("No", "Mock", "All Leagues"))
+  cutoff = as.integer(cutoff)
+  
+  # Checking to see if default arguments are used / the result may be cached
+  is_cache_format = (
+    period == "RECENT"
+    && fcount == "12"
+    && format == "All Leagues"
+    && is_keeper == "No"
+    && is_mock == "No"
+    && cutoff == "10"
+  )
+  
+  obj_name = paste0("MFL ", toupper(metric))
+  is_cached = obj_name %in% list_ffanalytics_cache(quiet = TRUE)$object
+  
+  if(is_cached && is_cache_format) {
+    out_df = get_cached_object(sprintf("mfl_%s.rds", metric))
+    return(out_df)
+  }
+  
+  format = switch(format,
+                  "All Leagues" = -1,
+                  "PPR" = 1,
+                  "Std" = 0
+  )
+  is_keeper = paste0(substr(is_keeper, 1, 1), collapse = "")
+  is_mock = switch(is_mock,
+                   "No" = 0,
+                   "Mock" = 1,
+                   "All Leagues" = -1
+  )
+  
+  if(is_aav) {
+    url = sprintf("https://api.myfantasyleague.com/%d/export?TYPE=%s&PERIOD=%s&IS_PPR=%d&IS_KEEPER=%s&JSON=1",
+                  get_scrape_year(), metric, period, format, is_keeper)
+    cols = setNames(c("id", "averageValue", "minValue", "maxValue", "auctionSelPct"),
+                    c("id", "aav", "min_av", "max_av", "draft_percentage"))
+  } else {
+    url = sprintf("https://api.myfantasyleague.com/%d/export?TYPE=%s&PERIOD=%s&FCOUNT=%s&IS_PPR=%s&IS_KEEPER=%s&IS_MOCK=%s&CUTOFF=%d&DETAILS=&JSON=1",
+                  get_scrape_year(), metric, period, fcount, format, is_keeper, is_mock, cutoff)
+    cols = setNames(c("id", "averagePick", "minPick", "maxPick", "draftSelPct"),
+                    c("id", "adp", "min_dp", "max_dp", "draft_percentage"))
+  }
+  
+  mfl_json = httr2::request(url) %>%
+    httr2::req_user_agent("ffanalytics R package (https://github.com/FantasyFootballAnalytics/ffanalytics)") %>%
+    httr2::req_perform() %>%
+    httr2::resp_body_json()
+  
+  out_df = mfl_json[[metric]]$player %>%
+    dplyr::bind_rows() %>%
+    dplyr::select(!!!cols) %>%
+    type.convert(as.is = TRUE) %>%
+    dplyr::mutate(id = as.character(id))
+  
+  if(is_aav) { # $1000 split among N franchises (adjusted to ~$200 per team)
+    out_df$aav = out_df$aav * (200 / (1000 / as.integer(fcount)))
+  }
+  
+  if(is_cache_format) {
+    cache_object(out_df, sprintf("mfl_%s.rds", metric))
+  }
+  out_df
+  
+}
+
 add_adp_fd <-function(ff,allPlayers){
   adp_fd_url <- 'https://fantasydata.com/NFL_Adp/ADP_Read'
   adp_fd_raw <- jsonlite::fromJSON(adp_fd_url, flatten = TRUE)
@@ -1177,7 +1333,7 @@ add_adp_fd <-function(ff,allPlayers){
   #   adp_fd <- rbind(adp_fd,adp_def) %>% arrange(AverageDraftPosition)
   # }
   ff2 <- ff %>% left_join(adp_fd[,c("pId","AverageDraftPosition")], by='pId')
-  ff2 <- ff2 %>% rename_at(vars(c("adp","adp_diff","AverageDraftPosition")),funs(c("adp_ff","adp_ff_diff","adp"))) %>% relocate(adp, .before = adp_ff)
+  ff2 <- ff2 %>% rename(adp_ff = adp, adp_ff_diff = adp_diff, adp = AverageDraftPosition) %>% relocate(adp, .before = adp_ff)
   ff2 <- ff2 %>% mutate(adp = if_else(is.na(adp),adp_ff,adp))
   ff2 <- ff2 %>% mutate(adp_diff = rank - adp) %>% relocate(adp_diff, .after = adp)
   return(ff2)
@@ -1390,9 +1546,12 @@ getStrengthDefense <- function(ff){
 
 getStrengthOffense <- function(ff){
   ffOff <- ff[ff$pos != "DST",] %>% select(team,pos,pId,points)
-  ffQB <- ffOff %>% filter(pos == "QB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("QB",c("","Pts"))))
-  ffRB <- ffOff %>% filter(pos == "RB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("RB",c("","Pts"))))
-  ffWR <- ffOff %>% filter(grepl('TE|WR',pos)) %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% rename_at(vars(c("pId","points")),funs(paste0("WR",c("","Pts"))))
+  ffQB <- ffOff %>% filter(pos == "QB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% 
+    rename(QB = pId, QBPts = points) #rename_at(vars(c("pId","points")),funs(paste0("QB",c("","Pts"))))
+  ffRB <- ffOff %>% filter(pos == "RB") %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% 
+    rename(RB = pId, RBPts = points) #rename_at(vars(c("pId","points")),funs(paste0("RB",c("","Pts"))))
+  ffWR <- ffOff %>% filter(grepl('TE|WR',pos)) %>% group_by(team) %>% top_n(n=1,wt=points) %>% select(team,pId,points) %>% 
+    rename(WR = pId, WRPts = points) #rename_at(vars(c("pId","points")),funs(paste0("WR",c("","Pts"))))
   
   ffOffTotal <- ffQB %>% inner_join(ffRB, by='team') %>% inner_join(ffWR, by='team')
   ffOffTotal <- ffOffTotal %>% mutate(points=sum(QBPts,RBPts,WRPts)) %>% arrange(desc(points)) %>% as.data.frame()

@@ -64,8 +64,9 @@ ff <- getManualProjections_Strength(ff=ff)
 leagueInfo <- getLeagueInfo(leagueId)
 if(nrow(leagueInfo)==1){
   keeperFile <- paste0("Data/Keepers-",gsub(" ","",leagueInfo$name),leagueInfo$season,'-',Sys.Date(),".xlsx")
+  keeperFile <- gsub("[^\x01-\x7F]", "", keeperFile)
   prevLeague <- leagueInfo$previous_league_id #prevLeague <- leagueInfo$league_id
-  if(!file.exists(fffile)){
+  if(!file.exists(keeperFile) & file.exists(fffile)){
     if(!is.null(prevLeague)) sKeepers <- getKeeperDraftRound(leagueId = leagueId,ff,writeFile=keeperFile, allPlayers=allPlayers)
   }
 }
